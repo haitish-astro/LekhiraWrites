@@ -1,0 +1,5 @@
+# Keep line endings consistent across machines.
+* text=auto eol=lf
+*.cmd text eol=crlf
+*.ico binary
+*.png binary

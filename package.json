@@ -1,0 +1,16 @@
+{
+  "name": "lekhira-writes",
+  "productName": "Lekhira Writes",
+  "version": "0.1.0",
+  "description": "Lekhira Writes: the free web writing editor from Lekhira.",
+  "author": "Lekhira",
+  "license": "SEE LICENSE IN LICENSE.txt",
+  "private": true,
+  "engines": { "node": ">=22.13" },
+  "scripts": {
+    "start": "node --disable-warning=ExperimentalWarning server/index.js",
+    "dev": "node --disable-warning=ExperimentalWarning --watch-path=server server/index.js",
+    "test": "node --disable-warning=ExperimentalWarning test/run.js",
+    "pages": "node pages/build.js"
+  }
+}

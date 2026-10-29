@@ -1,0 +1,87 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Lekhira Writes</title>
+  <meta name="theme-color" content="#141416">
+  <meta name="referrer" content="same-origin">
+  <link rel="icon" href="/img/logo.svg" type="image/svg+xml">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Cormorant+Garamond:ital,wght@0,500;0,600;1,500&family=DM+Sans:opsz,wght@9..40,400;9..40,500;9..40,700&display=swap">
+  <link rel="stylesheet" href="/css/site.css">
+  <script src="/js/api.js" defer></script>
+  <script src="/js/auth.js" defer></script>
+</head>
+<body>
+  <div class="auth-page">
+    <aside class="auth-art">
+      <a class="brand" href="/"><img src="/img/logo.svg" alt=""><span class="word">Lekhira <em>Writes</em></span></a>
+      <div>
+        <blockquote>Every story deserves to be <i>written.</i></blockquote>
+        <div class="perks">
+          <div><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="m5 12 4.5 4.5L19 7"/></svg>Free, with chapters, cloud saving and version history</div>
+          <div><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="m5 12 4.5 4.5L19 7"/></svg>Export your words whenever you like</div>
+          <div><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="m5 12 4.5 4.5L19 7"/></svg>No ads, no trackers, no AI writing for you</div>
+        </div>
+      </div>
+      <small>© Lekhira</small>
+    </aside>
+
+    <main class="auth-main">
+      <div class="auth-card">
+        <!-- sign in -->
+        <form id="signin" class="hidden" novalidate>
+          <h1>Welcome back</h1>
+          <p class="sub">Sign in to pick up where you left off.</p>
+          <div class="form-error hidden" role="alert"></div>
+          <div class="field">
+            <label for="si-email">Email</label>
+            <input class="input" id="si-email" name="email" type="email" autocomplete="username" maxlength="254" required>
+          </div>
+          <div class="field">
+            <label for="si-password">Password</label>
+            <div class="pw-wrap">
+              <input class="input" id="si-password" name="password" type="password" autocomplete="current-password" maxlength="200" required>
+              <button type="button" class="pw-toggle" aria-label="Show password">Show</button>
+            </div>
+          </div>
+          <button class="btn primary block lg" type="submit">Sign in</button>
+          <p class="switch">New to Lekhira? <a href="/signup">Create a free account</a></p>
+        </form>
+
+        <!-- sign up -->
+        <form id="signup" class="hidden" novalidate>
+          <h1>Start writing</h1>
+          <p class="sub">A free account. Your first book will be ready in a moment.</p>
+          <div class="form-error hidden" role="alert"></div>
+          <div class="field">
+            <label for="su-name">Your name</label>
+            <input class="input" id="su-name" name="name" autocomplete="name" maxlength="80" required>
+            <span class="hint">Shown on your books as the author. You can change it later.</span>
+          </div>
+          <div class="field">
+            <label for="su-email">Email</label>
+            <input class="input" id="su-email" name="email" type="email" autocomplete="username" maxlength="254" required>
+          </div>
+          <div class="field">
+            <label for="su-password">Password</label>
+            <div class="pw-wrap">
+              <input class="input" id="su-password" name="password" type="password" autocomplete="new-password" minlength="10" maxlength="200" required>
+              <button type="button" class="pw-toggle" aria-label="Show password">Show</button>
+            </div>
+            <div class="meter" aria-hidden="true"><i></i></div>
+            <span class="hint" id="pw-hint">At least 10 characters. A short phrase works well.</span>
+          </div>
+          <label class="check field"><input type="checkbox" name="agree" required><span>I agree to the <a href="/legal#terms" target="_blank" rel="noopener">Terms</a> and <a href="/legal#privacy" target="_blank" rel="noopener">Privacy Policy</a>.</span></label>
+          <button class="btn primary block lg" type="submit">Create account</button>
+          <p class="switch">Already have an account? <a href="/signin">Sign in</a></p>
+        </form>
+
+        <p class="security-note"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="5" y="11" width="14" height="10" rx="2"/><path d="M8 11V8a4 4 0 0 1 8 0v3"/></svg>Protected sign-in. Your password is never stored, only a scrambled hash of it.</p>
+      </div>
+    </main>
+  </div>
+</body>
+</html>

@@ -1,0 +1,6 @@
+# Local database and logs (never commit writers' books)
+data/
+*.log
+
+# GitHub Pages preview build (recreate with `npm run pages`)
+_site/

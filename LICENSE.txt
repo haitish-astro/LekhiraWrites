@@ -1,0 +1,26 @@
+LEKHIRA WRITES — SOFTWARE LICENCE
+
+Copyright (c) 2026 Lekhira. All rights reserved.
+
+Lekhira Writes, including its source code, design, interface, icons and
+documentation (the "Software"), is the property of Lekhira and is protected
+by copyright law and international treaties.
+
+The source code is published so that it can be reviewed and tested. Being
+able to read it does not make it open source. You may view it and run it on
+your own computer to evaluate it. You may NOT, without Lekhira's prior
+written permission:
+  - copy, modify, translate or create derivative works of the Software,
+    in whole or in part, beyond what evaluating it requires;
+  - host, redistribute, sell, rent, lend, sublicense or publish the
+    Software, or any part of it, including as a service for others;
+  - remove or alter any copyright, trademark or licence notice.
+
+YOUR WRITING IS YOURS. Lekhira claims no rights in the books, notes or other
+content you create with the Software, and you can export it at any time.
+
+The Software is provided "as is", without warranty of any kind. To the
+extent permitted by law, Lekhira is not liable for any loss of data or other
+damages arising from its use. Please keep copies of important work.
+
+"Lekhira", "Lekhira Writes" and "Lekhira Writing Studio" are names of Lekhira.

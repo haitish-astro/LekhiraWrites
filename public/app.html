@@ -1,0 +1,185 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="referrer" content="same-origin">
+  <meta name="theme-color" content="#161618">
+  <title>Lekhira Writes</title>
+  <link rel="icon" href="/img/logo.svg" type="image/svg+xml">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Cormorant+Garamond:ital,wght@0,500;0,600;1,500&display=swap">
+  <link rel="stylesheet" href="/css/app.css">
+  <script src="/js/util.js" defer></script>
+  <script src="/js/api.js" defer></script>
+  <script src="/js/editor.js" defer></script>
+  <script src="/js/app.js" defer></script>
+</head>
+<body class="booting">
+  <!-- Title bar: the same bar as Lekhira Writing Studio -->
+  <header id="titlebar">
+    <a class="brand" href="/app" data-link><span class="logo"></span><span>Lekhira Writes</span></a>
+    <div id="docTitle" class="doc-title"></div>
+    <div class="tb-right">
+      <div id="saveState" class="save-state"></div>
+      <button class="studio-pill" id="studioBtn" title="What Lekhira Studio adds"><i data-icon="sparkle"></i><span>Lekhira Studio</span></button>
+      <button class="avatar" id="accountBtn" title="Account"></button>
+    </div>
+  </header>
+
+  <!-- Library -->
+  <section id="library" class="view hidden">
+    <div class="lib-inner">
+      <div class="lib-head">
+        <div>
+          <h1 class="wordmark">Your library</h1>
+          <p class="lib-sub" id="libSub"></p>
+        </div>
+        <div class="lib-actions">
+          <button class="btn ghost" id="trashBtn">Trash</button>
+          <button class="btn ghost" id="shortcutsBtn">Shortcuts</button>
+          <button class="btn primary" id="newBookBtn">New book</button>
+        </div>
+      </div>
+      <div class="lib-strip">
+        <div class="tip-card" id="todayCard"></div>
+        <div class="streak-card" id="streakCard"></div>
+      </div>
+      <div id="bookGrid" class="book-grid"></div>
+    </div>
+  </section>
+
+  <!-- Trash -->
+  <section id="trash" class="view hidden">
+    <div class="lib-inner">
+      <div class="lib-head">
+        <div>
+          <h1 class="wordmark">Trash</h1>
+          <p class="lib-sub">Books here can be restored until you delete them forever.</p>
+        </div>
+        <div class="lib-actions"><a class="btn ghost" href="/app" data-link>Back to library</a></div>
+      </div>
+      <ul id="trashList" class="trash-list"></ul>
+    </div>
+  </section>
+
+  <!-- Studio -->
+  <section id="studio" class="view hidden">
+    <aside id="sidebar">
+      <button class="side-book" id="sideBook" title="Book details — title, author, word goal">
+        <div class="side-book-title" id="sideBookTitle"></div>
+        <div class="side-book-meta" id="sideBookMeta"></div>
+        <div class="side-goal hidden" id="sideGoal"><i></i></div>
+      </button>
+      <div class="side-label"><span>Chapters</span>
+        <span class="side-label-btns">
+          <button class="icon-btn sm" id="addChapterBtn" title="New chapter (Ctrl+Alt+N)" data-icon="plus"></button>
+        </span>
+      </div>
+      <ol id="chapterList" class="chapter-list"></ol>
+      <nav class="side-foot">
+        <button class="side-link" id="historyLink"><i data-icon="history"></i>Version history</button>
+        <button class="side-link" id="exportLink"><i data-icon="export"></i>Export</button>
+        <a class="side-link" href="/app" data-link><i data-icon="library"></i>Library</a>
+        <button class="side-link" id="sideHelp"><i data-icon="keyboard"></i>Shortcuts</button>
+      </nav>
+    </aside>
+
+    <main id="workspace">
+      <div id="toolbar">
+        <div class="tb-group">
+          <button class="icon-btn" id="toggleSidebar" title="Toggle sidebar (Ctrl+\)" data-icon="sidebar"></button>
+        </div>
+        <div class="tb-group">
+          <select id="blockSelect" class="tb-select" title="Text style">
+            <option value="p">Body text</option>
+            <option value="h1">Heading</option>
+            <option value="h2">Subheading</option>
+            <option value="h3">Subtitle</option>
+            <option value="quote">Quote</option>
+          </select>
+          <select id="fontSelect" class="tb-select font" title="Writing font — applies to the whole page"></select>
+          <select id="sizeSelect" class="tb-select size" title="Writing size"></select>
+        </div>
+        <div class="tb-group">
+          <button class="icon-btn glyph" data-cmd="bold" title="Bold (Ctrl+B)"><b>B</b></button>
+          <button class="icon-btn glyph" data-cmd="italic" title="Italic (Ctrl+I)"><i>I</i></button>
+          <button class="icon-btn glyph" data-cmd="underline" title="Underline (Ctrl+U)"><u>U</u></button>
+        </div>
+        <div class="tb-group">
+          <button class="icon-btn glyph" data-cmd="sceneBreak" title="Scene break (Ctrl+Enter)"><span class="scene-glyph">⁂</span></button>
+        </div>
+        <div class="tb-spacer"></div>
+        <div class="tb-group">
+          <button class="icon-btn" data-cmd="undo" title="Undo (Ctrl+Z)" data-icon="undo"></button>
+          <button class="icon-btn" data-cmd="redo" title="Redo (Ctrl+Y)" data-icon="redo"></button>
+        </div>
+        <div class="tb-group">
+          <button class="icon-btn" id="historyBtn" title="Version history (Ctrl+Shift+H)" data-icon="history"></button>
+          <button class="icon-btn glyph room-btn" id="roomBtn" title="Writing room — how the page looks while you write"><span>Aa</span></button>
+          <button class="icon-btn" id="focusBtn" title="Focus mode (F11)" data-icon="focus"></button>
+        </div>
+      </div>
+
+      <div id="scroller">
+        <article id="page" class="theme-charcoal para-indent">
+          <header class="chapter-head">
+            <div id="chapterLabel" class="chapter-label"></div>
+            <h1 id="chapterTitle" contenteditable="plaintext-only" spellcheck="true" data-placeholder="Chapter title"></h1>
+          </header>
+          <div id="editor" contenteditable="true" spellcheck="true" data-placeholder="Begin here…" role="textbox" aria-multiline="true" aria-label="Chapter text"></div>
+        </article>
+        <div class="page-next"><button class="btn ghost" id="nextChapter"></button></div>
+      </div>
+
+      <footer id="statusbar">
+        <div class="sb-left">
+          <button class="sb-link" id="sbChapterWords" title="Word count (Ctrl+Shift+C)"></button>
+          <span class="sb-dot hidden" id="sbSelDot"></span>
+          <span id="sbSelection"></span>
+        </div>
+        <div class="sb-right">
+          <button class="goal" id="goalBtn" title="Today's writing goal">
+            <svg viewBox="0 0 20 20" class="ring"><circle cx="10" cy="10" r="8" class="ring-bg"/><circle cx="10" cy="10" r="8" class="ring-fg" id="goalRing"/></svg>
+            <span id="goalText"></span>
+          </button>
+          <span class="sb-dot"></span>
+          <span id="sbBookWords"></span>
+        </div>
+      </footer>
+      <div id="focusHint">Focus mode · press <kbd>Esc</kbd> to return</div>
+    </main>
+
+    <aside id="panel">
+      <div class="panel-head"><b id="panelTitle"></b><button class="icon-btn sm" id="closePanel" title="Close" data-icon="x"></button></div>
+      <div class="panel-body" id="panelBody"></div>
+    </aside>
+  </section>
+
+  <!-- Writing room: how the page looks while you write -->
+  <div id="roomPop" class="room-pop hidden" role="dialog" aria-label="Writing room">
+    <div class="room-h"><b>Writing room</b><small>How the page looks while you write. It only changes your screen.</small></div>
+    <div class="field"><label class="field-label">Page colour</label><div class="swatches" id="bkTheme"></div></div>
+    <div class="field"><label class="field-label" for="bkFont">Font</label><select id="bkFont"></select></div>
+    <div class="field row">
+      <div><label class="field-label" for="bkSize">Size</label><select id="bkSize"></select></div>
+      <div><label class="field-label" for="bkLine">Line spacing</label><select id="bkLine"></select></div>
+    </div>
+    <div class="field row">
+      <div><label class="field-label">Paragraphs</label><div class="seg" id="bkPara"><button data-v="indent">Indent</button><button data-v="spaced">Spaced</button></div></div>
+      <div><label class="field-label">Alignment</label><div class="seg" id="bkAlign"><button data-v="left">Ragged</button><button data-v="justify">Justified</button></div></div>
+    </div>
+    <div class="room-opts">
+      <label class="check"><input type="checkbox" id="optPunct"> Smart punctuation</label>
+      <label class="check"><input type="checkbox" id="optTypewriter"> Typewriter scrolling</label>
+    </div>
+  </div>
+
+  <div id="boot"><span class="logo"></span><span>Opening your library…</span></div>
+  <div id="modalRoot"></div>
+  <div id="menuRoot"></div>
+  <div id="toast" role="status" aria-live="polite"></div>
+  <div id="printRoot" aria-hidden="true"></div>
+</body>
+</html>
