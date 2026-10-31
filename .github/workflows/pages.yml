@@ -29,7 +29,8 @@ jobs:
       - name: Build the Pages preview
         run: npm run pages
         env:
-          PAGES_BASE: /${{ github.event.repository.name }}
+          # Served at the root of writes.lekhira.com (the custom domain under Settings → Pages).
+          PAGES_BASE: ""
       - uses: actions/configure-pages@v5
       - uses: actions/upload-pages-artifact@v3
         with:

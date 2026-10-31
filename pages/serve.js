@@ -1,13 +1,13 @@
 // Lekhira Writes — serves _site/ the way GitHub Pages does, to check the preview locally.
 // Folder addresses get index.html, "/signin" redirects to "/signin/", and missing files get
-// 404.html with a 404 status.   node pages/serve.js   → http://localhost:4320/LekhiraWrites/
+// 404.html with a 404 status.   node pages/serve.js   → http://localhost:4320/
 'use strict';
 const http = require('node:http');
 const fs = require('node:fs');
 const path = require('node:path');
 
 const OUT = path.join(__dirname, '..', '_site');
-const BASE = (process.env.PAGES_BASE ?? '/LekhiraWrites').replace(/\/$/, '');
+const BASE = (process.env.PAGES_BASE ?? '').replace(/\/$/, '');
 const PORT = Number(process.env.PORT) || 4320;
 const TYPES = { '.html': 'text/html; charset=utf-8', '.css': 'text/css', '.js': 'text/javascript', '.svg': 'image/svg+xml', '.txt': 'text/plain' };
 

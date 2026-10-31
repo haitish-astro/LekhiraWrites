@@ -24,7 +24,8 @@ Open http://writes.localhost:4310 (http://localhost:4310 works too). If it says 
 ## GitHub Pages preview
 GitHub Pages can only serve files; it can't run the server or the database. So every push to `main` publishes a **browser-only preview**: the same pages and editor, with the server replaced by `pages/preview-api.js`, which keeps accounts and books in that browser's storage. A "Preview" note says so on every page. Use it to show and try the app, not for real accounts.
 
-- **Live at:** https://haitish-astro.github.io/LekhiraWrites/
+- **Live at:** https://writes.lekhira.com (the old https://haitish-astro.github.io/LekhiraWrites/ address forwards there).
+- **Domain:** Settings → Pages → Custom domain is `writes.lekhira.com`, with a CNAME record `writes` → `haitish-astro.github.io` at the domain registrar (Squarespace). The build also writes a `CNAME` file. To build for the old github.io sub-path instead, set `PAGES_BASE=/LekhiraWrites`.
 - **One-time setup:** on GitHub, open the repo's Settings → Pages → Build and deployment → Source, and choose **GitHub Actions**. Then re-run the "Publish preview to GitHub Pages" workflow (Actions tab), or push again.
 - **Build and check it locally:**
 
@@ -36,7 +37,7 @@ npm run pages
 node pages/serve.js
 ```
 
-Then open http://localhost:4320/LekhiraWrites/. The workflow runs `npm test` before publishing, so a failing test stops the deploy.
+Then open http://localhost:4320/. The workflow runs `npm test` before publishing, so a failing test stops the deploy.
 
 ## Same feel as Lekhira Studio
 The app (`/app`) uses Studio's colour tokens, fonts, layout and wording:

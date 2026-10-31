@@ -1,8 +1,8 @@
 // Lekhira Writes — builds the GitHub Pages preview into _site/.
-// GitHub Pages serves files only, so this copies public/, points every link at the repo's
-// sub-path (e.g. /LekhiraWrites/), and swaps the server API for pages/preview-api.js.
-//   node pages/build.js                 base path /LekhiraWrites
-//   PAGES_BASE=/Other node pages/build.js
+// GitHub Pages serves files only, so this copies public/, points every link at the site's
+// base path (none on writes.lekhira.com), and swaps the server API for pages/preview-api.js.
+//   node pages/build.js                 for writes.lekhira.com (served from the domain's root)
+//   PAGES_BASE=/LekhiraWrites node pages/build.js   for a github.io sub-path instead
 'use strict';
 const fs = require('node:fs');
 const path = require('node:path');
@@ -10,12 +10,15 @@ const path = require('node:path');
 const ROOT = path.join(__dirname, '..');
 const PUBLIC = path.join(ROOT, 'public');
 const OUT = path.join(ROOT, '_site');
-const BASE = (process.env.PAGES_BASE ?? '/LekhiraWrites').replace(/\/$/, '');
+const BASE = (process.env.PAGES_BASE ?? '').replace(/\/$/, '');
+const DOMAIN = process.env.PAGES_DOMAIN ?? 'writes.lekhira.com';
 if (BASE && !/^\/[A-Za-z0-9._-]+$/.test(BASE)) throw new Error(`Unexpected PAGES_BASE: ${BASE}`);
 
 fs.rmSync(OUT, { recursive: true, force: true });
 fs.cpSync(PUBLIC, OUT, { recursive: true });
 fs.writeFileSync(path.join(OUT, '.nojekyll'), '');
+// The custom domain (also set under Settings → Pages); kept here so it's visible in the repo.
+if (DOMAIN && !BASE) fs.writeFileSync(path.join(OUT, 'CNAME'), `${DOMAIN}\n`);
 fs.copyFileSync(path.join(__dirname, 'preview-api.js'), path.join(OUT, 'js', 'preview-api.js'));
 fs.copyFileSync(path.join(__dirname, 'preview.css'), path.join(OUT, 'css', 'preview.css'));
 fs.writeFileSync(path.join(OUT, 'js', 'preview.js'), fs.readFileSync(path.join(__dirname, 'preview.js'), 'utf8').replace("'__BASE__'", JSON.stringify(BASE)));
