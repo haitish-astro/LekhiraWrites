@@ -167,7 +167,8 @@
     try { id = localStorage.getItem(SESSION_KEY); } catch { /* ignore */ }
     return db.users.find((u) => u.id === id) || null;
   };
-  const publicUser = (u) => ({ id: u.id, email: u.email, name: u.name, dailyGoal: u.dailyGoal, prefs: cleanPrefs(u.prefs, {}) });
+  // Emails can't be sent from a browser, so preview accounts count as confirmed.
+  const publicUser = (u) => ({ id: u.id, email: u.email, name: u.name, emailVerified: true, dailyGoal: u.dailyGoal, prefs: cleanPrefs(u.prefs, {}) });
   const utcDay = (d = new Date()) => d.toISOString().slice(0, 10);
   function writerDay(v) {
     if (typeof v === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(v) && Math.abs(Date.parse(v + 'T12:00:00Z') - Date.now()) < 40 * 3600 * 1000) return v;
@@ -277,6 +278,12 @@
     return { ok: true };
   });
   on('POST', '/api/me/signout-others', () => ({ ok: true }));
+  on('POST', '/api/me/verify/resend', () => ({ ok: true, already: true }));
+  on('GET', '/api/me/apps', () => ({ apps: [] }));
+  const needsServer = () => fail(501, 'This needs the real Lekhira server, which sends emails. The preview keeps accounts only in this browser.');
+  on('POST', '/api/auth/forgot', needsServer, { auth: false });
+  on('POST', '/api/auth/reset', needsServer, { auth: false });
+  on('POST', '/api/auth/verify', needsServer, { auth: false });
   on('GET', '/api/me/sessions', () => ({ sessions: [{ current: true, createdAt: Date.now(), lastSeen: Date.now(), agent: navigator.userAgent }] }));
   on('POST', '/api/me/delete', async (q, body, u) => {
     if (typeof body.password !== 'string' || !(await verifyPassword(body.password, u.pwHash))) fail(400, 'Your password isn’t right.', { field: 'password' });

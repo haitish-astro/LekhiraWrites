@@ -66,7 +66,8 @@ function cleanPrefs(input, current) {
 function readPrefs(json) { try { return cleanPrefs(JSON.parse(json), {}); } catch { return {}; } }
 
 function publicUser(u) {
-  return { id: u.id, email: u.email, name: u.name, dailyGoal: u.dailyGoal ?? u.daily_goal, prefs: readPrefs(u.prefs) };
+  const verified = u.emailVerifiedAt !== undefined ? u.emailVerifiedAt : u.email_verified_at;
+  return { id: u.id, email: u.email, name: u.name, emailVerified: !!verified, dailyGoal: u.dailyGoal ?? u.daily_goal, prefs: readPrefs(u.prefs) };
 }
 
 function bookRow(r) {
@@ -152,7 +153,7 @@ function stats(db, userId, today) {
 
 // ---------- routes ----------
 function register(r, ctx) {
-  const { db, limiter, cookies } = ctx;
+  const { db, limiter, cookies, accounts } = ctx;
 
   // --- account ---
   r.post('/api/auth/signup', { auth: false }, async (req, res, body) => {
@@ -177,6 +178,8 @@ function register(r, ctx) {
     const token = auth.createSession(db, id, req.headers['user-agent']);
     cookies.set(res, token);
     const user = db.prepare('SELECT * FROM users WHERE id = ?').get(id);
+    accounts.sendVerification(user);
+    accounts.noteSignIn(req, res, user, { quiet: true });
     return { status: 201, body: { user: publicUser(user) } };
   });
 
@@ -194,6 +197,7 @@ function register(r, ctx) {
     limiter.reset(`signin-email:${email}`);
     const token = auth.createSession(db, user.id, req.headers['user-agent']);
     cookies.set(res, token);
+    accounts.noteSignIn(req, res, user);
     return { user: publicUser(user) };
   });
 
@@ -224,9 +228,11 @@ function register(r, ctx) {
     const hash = await auth.hashPassword(next);
     const now = Date.now();
     db.prepare('UPDATE users SET pw_hash = ?, pw_changed_at = ? WHERE id = ?').run(hash, now, row.id);
-    // Signs out every other device; this browser gets a fresh session.
+    // Signs out every other device and app; this browser gets a fresh session.
     db.prepare('DELETE FROM sessions WHERE user_id = ?').run(row.id);
+    accounts.revokeAllApps(row.id);
     cookies.set(res, auth.createSession(db, row.id, req.headers['user-agent']));
+    accounts.notifyPasswordChanged(row);
     return { ok: true };
   });
 

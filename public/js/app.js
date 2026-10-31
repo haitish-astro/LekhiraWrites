@@ -280,9 +280,23 @@ async function showLibrary() {
   renderLibrary(list.books);
 }
 
+async function resendVerification() {
+  try {
+    const r = await api.post('/api/me/verify/resend');
+    toast(r.already ? 'Your email is already confirmed' : `Sent — check ${user.email}`);
+  } catch (e) { toast(e.message); }
+}
+
 function renderLibrary(books) {
   const total = books.reduce((n, b) => n + b.words, 0);
   $('#libSub').textContent = books.length ? `${plural(books.length, 'book')} · ${plural(total, 'word')} written` : 'A quiet place to write.';
+  // Writing never waits on this; a confirmed address is needed for Studio sign-in and, later, plans.
+  const note = $('#verifyNote');
+  note.classList.toggle('hidden', !!user.emailVerified);
+  if (!user.emailVerified) {
+    note.replaceChildren(el('span', {}, el('b', { text: 'Please confirm your email. ' }), `We sent a link to ${user.email}.`),
+      el('button', { class: 'btn sm', text: 'Send it again', onclick: resendVerification }));
+  }
   const goal = user.dailyGoal;
   const spark = el('div', { class: 'spark', 'aria-label': 'Words written each day for the last four weeks' });
   const max = Math.max(goal || 1, ...stats.days.map((d) => d.words));
@@ -815,6 +829,9 @@ function openAccount() {
     const row = (label, input) => el('div', { class: 'field' }, el('label', { class: 'field-label', text: label }), input);
     const name = el('input', { value: user.name, maxlength: '80' });
     body.append(el('div', { class: 'pane-h', text: 'Profile' }), row('Name', name), row('Email', el('input', { value: user.email, disabled: true })),
+      user.emailVerified
+        ? el('p', { class: 'hint status-ok', text: '✓ Email confirmed' })
+        : el('p', { class: 'hint status-warn' }, 'Email not confirmed yet. ', el('button', { class: 'linkish', text: 'Send the link again', onclick: resendVerification })),
       el('button', { class: 'btn sm primary', text: 'Save', onclick: async () => {
         try { user = (await api.patch('/api/me', { name: name.value })).user; paintAvatar(); toast('Saved'); } catch (e) { toast(e.message); }
       } }));
@@ -841,6 +858,21 @@ function openAccount() {
       el('button', { class: 'btn sm block', text: 'Sign out all other devices', onclick: async () => {
         try { await api.post('/api/me/signout-others'); toast('Other devices signed out'); loadSessions(); } catch (e) { toast(e.message); }
       } }));
+
+    // Desktop apps signed in through the browser (Lekhira Writing Studio).
+    const apps = el('div');
+    async function loadApps() {
+      try {
+        const r = await api.get('/api/me/apps');
+        apps.replaceChildren(...(r.apps.length ? r.apps.map((a) => el('div', { class: 'session-row' },
+          el('span', { text: a.device ? `${a.app} · ${a.device}` : a.app }),
+          el('button', { class: 'linkish', text: 'Sign out', onclick: async () => {
+            try { await api.post(`/api/me/apps/${a.id}/revoke`); toast(`${a.app} was signed out`); loadApps(); } catch (e) { toast(e.message); }
+          } }))) : [el('p', { class: 'hint', text: 'No apps yet. When you sign in to Lekhira Writing Studio, it shows up here.' })]));
+      } catch { /* optional */ }
+    }
+    loadApps();
+    body.append(el('div', { class: 'pane-h', text: 'Apps signed in' }), apps);
 
     body.append(el('div', { class: 'pane-h', text: 'Your data' }),
       el('p', { class: 'hint', text: 'Download everything Lekhira holds for you: your account, every book and chapter, and your writing log.' }),

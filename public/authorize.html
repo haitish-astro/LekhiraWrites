@@ -1,0 +1,42 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Sign in to Lekhira Writing Studio — Lekhira</title>
+  <meta name="theme-color" content="#141416">
+  <meta name="referrer" content="no-referrer">
+  <link rel="icon" href="/img/logo.svg" type="image/svg+xml">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Cormorant+Garamond:ital,wght@0,500;0,600;1,500&family=DM+Sans:opsz,wght@9..40,400;9..40,500;9..40,700&display=swap">
+  <link rel="stylesheet" href="/css/site.css">
+  <script src="/js/api.js" defer></script>
+  <script src="/js/authorize.js" defer></script>
+</head>
+<body>
+  <main class="center-page">
+    <div class="auth-card consent">
+      <a class="brand" href="/"><img src="/img/logo.svg" alt=""><span class="word">Lekhira</span></a>
+      <h1 id="c-title">Sign in to Lekhira Writing Studio?</h1>
+      <p class="sub" id="c-sub">Lekhira Writing Studio on this computer is asking to use your Lekhira account.</p>
+
+      <div class="consent-who" id="c-who"></div>
+      <ul class="consent-list">
+        <li>See your name, email and plan</li>
+        <li>Sync the books you choose to sync</li>
+      </ul>
+      <p class="hint">Studio never sees your password. You can sign it out at any time from Account &amp; privacy.</p>
+
+      <div class="form-error hidden" role="alert" id="c-error"></div>
+      <div class="consent-actions" id="c-actions">
+        <button class="btn outline lg" type="button" id="c-deny">Cancel</button>
+        <button class="btn primary lg" type="button" id="c-allow">Allow</button>
+      </div>
+      <button class="btn outline block hidden" type="button" id="c-resend">Send the confirmation email again</button>
+      <p class="hint hidden" id="c-done"></p>
+      <p class="switch">Not you? <a href="/app" id="c-switch">Switch account</a></p>
+    </div>
+  </main>
+</body>
+</html>

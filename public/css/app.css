@@ -633,3 +633,10 @@ kbd { font: 11px var(--ui); background: var(--surface-3); border-radius: 4px; pa
   .book-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 24px 16px; }
   #sbBookWords, #sbBookWords + .sb-dot { display: none; }
 }
+
+/* ---------- account notes ---------- */
+.verify-note { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; margin: -18px 0 28px; padding: 11px 16px; border-radius: 10px; background: var(--accent-soft); border: 1px solid rgba(201,168,106,.3); color: var(--text-2); font-size: 13px; }
+.verify-note b { color: var(--text); font-weight: 600; }
+.verify-note .btn { margin-left: auto; }
+.status-ok { color: #8fb487; }
+.status-warn { color: var(--accent); }

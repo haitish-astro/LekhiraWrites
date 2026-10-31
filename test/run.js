@@ -5,7 +5,14 @@ process.env.QUIET = '1';
 process.env.PORT = process.env.TEST_PORT || '4391';
 const assert = require('node:assert/strict');
 const http = require('node:http');
+const crypto = require('node:crypto');
 const { start, COOKIE } = require('../server/index.js');
+const { createMailer } = require('../server/mail.js');
+const desktop = require('../tools/desktop-signin.js');
+const mailer = createMailer({ provider: 'memory' });
+// The link in the newest email of a kind, sent to an address.
+const mailTo = (to, kind) => [...mailer.sent].reverse().find((m) => m.to === to && m.kind === kind);
+const tokenIn = (m) => (/#token=([A-Za-z0-9_-]+)/.exec(m.text) || [])[1];
 
 let base;
 let passed = 0;
@@ -39,7 +46,7 @@ function rawRequest(path, headers) {
 }
 
 (async () => {
-  const { server } = await start({ port: Number(process.env.PORT), dbFile: ':memory:' });
+  const { server } = await start({ port: Number(process.env.PORT), dbFile: ':memory:', mailer });
   const port = server.address().port;
   base = `http://localhost:${port}`;
   console.log(`\nLekhira Writes tests on ${base}\n`);
@@ -234,6 +241,149 @@ function rawRequest(path, headers) {
     assert.equal((await call('POST', '/api/me/delete', { cookie: bob, body: { password: 'wrong', confirm: 'DELETE' } })).status, 400);
     assert.equal((await call('POST', '/api/me/delete', { cookie: bob, body: { password: 'a different long phrase', confirm: 'DELETE' } })).status, 200);
     assert.equal((await call('GET', '/api/me', { cookie: bob })).status, 401);
+  });
+
+  // ---------- Phase 1: the shared Lekhira account ----------
+  let carol;
+  const carolEmail = 'carol@example.com';
+  let carolPassword = 'a quiet room with a view';
+  const count = (kind) => mailer.sent.filter((m) => m.to === carolEmail && m.kind === kind).length;
+
+  await test('sign-up sends a confirmation email; its link confirms the address once', async () => {
+    const r = await call('POST', '/api/auth/signup', { body: { name: 'Carol Poet', email: carolEmail, password: carolPassword, agree: true } });
+    assert.equal(r.status, 201, r.text);
+    carol = cookieFrom(r);
+    assert.equal(r.json.user.emailVerified, false);
+    const mail = mailTo(carolEmail, 'verify');
+    assert.ok(mail, 'no confirmation email was sent');
+    assert.match(mail.text, /\/verify#token=/);
+    const t = tokenIn(mail);
+    assert.equal((await call('POST', '/api/auth/verify', { body: { token: t } })).status, 200);
+    assert.equal((await call('GET', '/api/me', { cookie: carol })).json.user.emailVerified, true);
+    assert.equal((await call('POST', '/api/auth/verify', { body: { token: t } })).status, 400);
+  });
+
+  await test('a sign-in from a new browser sends an alert; a known browser does not', async () => {
+    const before = count('new-sign-in');
+    const a = await call('POST', '/api/auth/signin', { body: { email: carolEmail, password: carolPassword } });
+    assert.equal(a.status, 200, a.text);
+    assert.equal(count('new-sign-in'), before + 1);
+    const device = a.headers.getSetCookie().find((c) => c.startsWith('lw_device=')).split(';')[0];
+    await call('POST', '/api/auth/signin', { cookie: device, body: { email: carolEmail, password: carolPassword } });
+    assert.equal(count('new-sign-in'), before + 1);
+  });
+
+  await test('forgot password: one answer for any email; a one-time link; everyone signed out', async () => {
+    const n = mailer.sent.length;
+    const x = await call('POST', '/api/auth/forgot', { body: { email: 'nobody@example.com' } });
+    const y = await call('POST', '/api/auth/forgot', { body: { email: carolEmail } });
+    assert.equal(x.status, 200);
+    assert.equal(x.json.message, y.json.message);
+    assert.equal(mailer.sent.length, n + 1, 'only the real account gets an email');
+    const t = tokenIn(mailTo(carolEmail, 'reset'));
+    // A weak new password is refused without using up the link.
+    assert.equal((await call('POST', '/api/auth/reset', { body: { token: t, password: 'short' } })).status, 400);
+    carolPassword = 'a brand new lantern phrase';
+    const r = await call('POST', '/api/auth/reset', { body: { token: t, password: carolPassword } });
+    assert.equal(r.status, 200, r.text);
+    assert.equal((await call('GET', '/api/me', { cookie: carol })).status, 401, 'the old session should end');
+    carol = cookieFrom(r);
+    assert.equal((await call('GET', '/api/me', { cookie: carol })).status, 200);
+    assert.equal((await call('POST', '/api/auth/reset', { body: { token: t, password: 'another new phrase here' } })).status, 400);
+    assert.ok(mailTo(carolEmail, 'password-changed'));
+  });
+
+  // Desktop sign-in, done the way Lekhira Writing Studio will do it.
+  const REDIRECT = 'http://127.0.0.1:53111/callback';
+  const pkce = () => {
+    const verifier = crypto.randomBytes(48).toString('base64url');
+    return { verifier, challenge: crypto.createHash('sha256').update(verifier).digest('base64url') };
+  };
+  const authParams = (p, extra = {}) => ({
+    client_id: 'lekhira-studio', redirect_uri: REDIRECT, response_type: 'code',
+    code_challenge: p.challenge, code_challenge_method: 'S256', state: 'st-123', device_name: 'Test laptop', ...extra,
+  });
+  const tokenPost = (params) => fetch(`${base}/api/oauth/token`, {
+    method: 'POST', headers: { 'Content-Type': 'application/x-www-form-urlencoded' }, body: new URLSearchParams(params).toString(),
+  }).then(async (r) => ({ status: r.status, json: await r.json() }));
+  async function signInApp(cookie) {
+    const p = pkce();
+    const ap = await call('POST', '/api/oauth/approve', { cookie, body: authParams(p) });
+    assert.equal(ap.status, 200, ap.text);
+    const code = new URL(ap.json.redirect).searchParams.get('code');
+    const t = await tokenPost({ grant_type: 'authorization_code', code, code_verifier: p.verifier, redirect_uri: REDIRECT, client_id: 'lekhira-studio' });
+    assert.equal(t.status, 200, JSON.stringify(t.json));
+    return t.json;
+  }
+
+  await test('desktop sign-in: bad requests are refused before anyone signs in', async () => {
+    const p = pkce();
+    const q = (o) => `/oauth/authorize?${new URLSearchParams(authParams(p, o))}`;
+    assert.equal((await call('GET', q({ redirect_uri: 'https://evil.example/callback' }))).status, 400);
+    assert.equal((await call('GET', q({ client_id: 'someone-else' }))).status, 400);
+    assert.equal((await call('GET', q({ code_challenge_method: 'plain' }))).status, 400);
+    const r = await call('GET', q({}));
+    assert.equal(r.status, 302);
+    assert.match(r.headers.get('location'), /^\/signin\?next=%2Foauth%2Fauthorize%3F/);
+    assert.equal((await call('GET', q({}), { cookie: carol })).status, 200);
+  });
+
+  await test('desktop sign-in needs a confirmed email address', async () => {
+    const r = await call('POST', '/api/oauth/approve', { cookie: alice, body: authParams(pkce()) });
+    assert.equal(r.status, 403);
+    assert.equal(r.json.needsVerification, true);
+  });
+
+  await test('desktop sign-in: the code works once, only with its PKCE verifier', async () => {
+    const p = pkce();
+    const ap = await call('POST', '/api/oauth/approve', { cookie: carol, body: authParams(p) });
+    const back = new URL(ap.json.redirect);
+    assert.equal(back.origin, 'http://127.0.0.1:53111');
+    assert.equal(back.searchParams.get('state'), 'st-123');
+    const req = { grant_type: 'authorization_code', code: back.searchParams.get('code'), redirect_uri: REDIRECT, client_id: 'lekhira-studio' };
+    assert.equal((await tokenPost({ ...req, code_verifier: pkce().verifier })).status, 400, 'a wrong verifier must fail');
+    const t = await tokenPost({ ...req, code_verifier: p.verifier });
+    assert.equal(t.status, 200);
+    assert.match(t.json.access_token, /^lka_/);
+    assert.match(t.json.refresh_token, /^lkr_/);
+    assert.equal((await desktop.me(base, t.json.access_token)).user.email, carolEmail);
+    // Using the code a second time fails, and ends the sign-in it was swapped for.
+    assert.equal((await tokenPost({ ...req, code_verifier: p.verifier })).status, 400);
+    await assert.rejects(desktop.me(base, t.json.access_token));
+    assert.match(mailTo(carolEmail, 'new-sign-in').text, /Lekhira Writing Studio on “Test laptop”/);
+  });
+
+  await test('the desktop API takes Bearer tokens only, never the browser cookie', async () => {
+    assert.equal((await call('GET', '/api/v1/me', { cookie: carol })).status, 401);
+    assert.equal((await call('GET', '/api/v1/me', { headers: { Authorization: 'Bearer lka_not-a-real-token' } })).status, 401);
+    const t = await signInApp(carol);
+    const me = await desktop.me(base, t.access_token);
+    assert.deepEqual(me.entitlements, { writes: true, studio: false, sync: false });
+    await desktop.signOut(base, t.refresh_token);
+    await assert.rejects(desktop.me(base, t.access_token));
+  });
+
+  await test('desktop tokens refresh; a reused refresh token ends that sign-in', async () => {
+    const t = await signInApp(carol);
+    const n = await desktop.refresh(base, t.refresh_token);
+    await desktop.me(base, n.access_token);
+    await assert.rejects(desktop.me(base, t.access_token), 'the old access token is replaced');
+    await assert.rejects(desktop.refresh(base, t.refresh_token));
+    await assert.rejects(desktop.me(base, n.access_token), 'reuse should end the sign-in');
+  });
+
+  await test('apps show in the Account panel and can be signed out there, or by a password change', async () => {
+    const t = await signInApp(carol);
+    const apps = (await call('GET', '/api/me/apps', { cookie: carol })).json.apps;
+    assert.equal(apps.length, 1);
+    assert.equal(apps[0].app, 'Lekhira Writing Studio');
+    assert.equal(apps[0].device, 'Test laptop');
+    assert.equal((await call('POST', `/api/me/apps/${apps[0].id}/revoke`, { cookie: carol })).status, 200);
+    await assert.rejects(desktop.me(base, t.access_token));
+    const t2 = await signInApp(carol);
+    const r = await call('POST', '/api/me/password', { cookie: carol, body: { current: carolPassword, next: 'one more fresh phrase' } });
+    assert.equal(r.status, 200, r.text);
+    await assert.rejects(desktop.me(base, t2.access_token));
   });
 
   server.close();

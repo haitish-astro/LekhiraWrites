@@ -88,7 +88,7 @@ function createSession(db, userId, agent) {
 function lookupSession(db, token) {
   if (!token || typeof token !== 'string' || token.length !== 43) return null;
   const hash = sha256(token);
-  const row = db.prepare(`SELECT s.token_hash, s.expires_at, s.last_seen, s.created_at, u.id, u.email, u.name, u.prefs, u.daily_goal, u.pw_changed_at
+  const row = db.prepare(`SELECT s.token_hash, s.expires_at, s.last_seen, s.created_at, u.id, u.email, u.name, u.prefs, u.daily_goal, u.pw_changed_at, u.email_verified_at
     FROM sessions s JOIN users u ON u.id = s.user_id WHERE s.token_hash = ?`).get(hash);
   if (!row) return null;
   const now = Date.now();
@@ -100,7 +100,7 @@ function lookupSession(db, token) {
   if (now - row.last_seen > TOUCH_MS) {
     db.prepare('UPDATE sessions SET last_seen = ?, expires_at = ? WHERE token_hash = ?').run(now, now + SESSION_MS, hash);
   }
-  return { tokenHash: hash, user: { id: row.id, email: row.email, name: row.name, prefs: row.prefs, dailyGoal: row.daily_goal } };
+  return { tokenHash: hash, user: { id: row.id, email: row.email, name: row.name, prefs: row.prefs, dailyGoal: row.daily_goal, emailVerifiedAt: row.email_verified_at } };
 }
 
 function endSession(db, tokenHash) { db.prepare('DELETE FROM sessions WHERE token_hash = ?').run(tokenHash); }

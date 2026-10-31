@@ -19,7 +19,7 @@ npm run writes
 npm run dev
 ```
 
-Open http://localhost:4310. If it says port 4310 is already in use, Lekhira Writes is probably already running, so just open that address. The database is created at `data/lekhira-writes.db`; delete the `data` folder to start fresh.
+Open http://writes.localhost:4310 (http://localhost:4310 works too). If it says port 4310 is already in use, Lekhira Writes is probably already running, so just open that address. The database is created at `data/lekhira-writes.db`; delete the `data` folder to start fresh.
 
 ## GitHub Pages preview
 GitHub Pages can only serve files; it can't run the server or the database. So every push to `main` publishes a **browser-only preview**: the same pages and editor, with the server replaced by `pages/preview-api.js`, which keeps accounts and books in that browser's storage. A "Preview" note says so on every page. Use it to show and try the app, not for real accounts.
@@ -52,7 +52,36 @@ The code follows Studio's conventions too: `public/js/util.js` mirrors `src/util
 npm test
 ```
 
-`npm test` starts a throwaway server and checks the API and its security rules (24 checks).
+`npm test` starts a throwaway server and checks the API and its security rules (33 checks).
+
+## The Lekhira account (Phase 1)
+One account for Writes and, soon, Lekhira Writing Studio. While testing, one server plays both parts of the planned set-up:
+
+| Planned address | On this computer | What it is |
+|---|---|---|
+| writes.lekhira.com | http://writes.localhost:4310 | The Writes site, sign-in pages, email links |
+| api.lekhira.com | http://api.localhost:4310 | The account API that desktop apps call |
+
+Browsers (and Node) treat any `*.localhost` name as this computer, so no setup is needed.
+
+- **Email confirmation.** Sign-up sends a link (valid for 48 hours). Writing never waits on it; a confirmed address is needed to sign in to Studio, and later for plans.
+- **Forgot password.** `/forgot` gives the same answer for every address, so it can't reveal who has an account. The emailed link works once, for 30 minutes, and signs out every browser and app.
+- **Sign-in alerts.** Signing in from a new browser, or connecting Studio, emails the writer. The first sign-in after creating the account doesn't.
+- **Emailed links** carry their token after `#`, so it never reaches server logs or other sites, and the page removes it from the address bar.
+- **Desktop sign-in** uses OAuth 2.0 with PKCE, the standard for desktop apps (RFC 8252). Studio opens the browser at `/oauth/authorize`, the writer clicks Allow, and the browser hands a one-time code back to Studio on a private `127.0.0.1` address. Studio swaps it for an access token (1 hour) and a refresh token (60 days, replaced on every use; an old one coming back ends that sign-in). Studio never sees the password. Signed-in apps are listed under **Account & privacy → Apps signed in**, and changing or resetting the password signs them all out.
+- **The desktop API** (`/api/v1/…`) accepts only `Authorization: Bearer` tokens, never the browser's cookie. `/api/v1/me` returns the account, the plan and its entitlements (everyone is on the free plan until Phase 3).
+
+### Emails while testing
+With the default `EMAIL_PROVIDER=outbox`, nothing is sent: each email is saved in `data/outbox/`, and **http://writes.localhost:4310/dev/outbox** shows them with their links clickable. (That page exists only outside production.) For real email, create a [Resend](https://resend.com) account, verify your domain there, and set `EMAIL_PROVIDER=resend`, `RESEND_API_KEY` and `EMAIL_FROM`.
+
+### Try desktop sign-in
+`tools/desktop-signin.js` is the sign-in client Studio will use. With the server running:
+
+```bash
+node tools/desktop-signin.js
+```
+
+It opens your browser at the Allow page (sign in and confirm your email first), then prints the account it got back and refreshes its token. Add `--test-reuse` to see a copied refresh token refused, or `--signout` to sign it out again.
 
 ## What's in the free version
 - Library of books with typographic covers, a trash and restore.
@@ -82,15 +111,19 @@ npm test
 |---|---|---|
 | `PORT` | `4310` | |
 | `HOST` | `127.0.0.1` | Use `0.0.0.0` behind a proxy |
-| `PUBLIC_ORIGIN` | `http://localhost:PORT` | Must be `https://` in production |
+| `PUBLIC_ORIGIN` | `http://writes.localhost:PORT` | The Writes site; must be `https://` in production |
+| `API_ORIGIN` | `http://api.localhost:PORT` | The account API; must be `https://` in production |
+| `EMAIL_PROVIDER` | `outbox` (`resend` in production) | `outbox`, `resend` or `memory` (tests) |
+| `RESEND_API_KEY`, `EMAIL_FROM` | | For `resend`, e.g. `Lekhira <no-reply@lekhira.com>` |
 | `NODE_ENV` | | `production` turns on Secure cookies and HSTS |
 | `DATA_DIR` | `./data` | |
 | `TRUST_PROXY` | | `1` behind a reverse proxy that sets `X-Forwarded-For` |
 
 ## Before it goes public
 1. **HTTPS hosting** behind a reverse proxy (Caddy or nginx), with `NODE_ENV=production`, plus daily encrypted backups of `data/`.
-2. **Email:** verify addresses, add password reset, and tell writers about new sign-ins. Sign-up currently says when an email is already registered; once verification exists it should send an email instead.
+2. **Email:** set up Resend (or another provider) for lekhira.com, with its SPF, DKIM and DMARC records. Sign-up still says when an email is already registered; with email in place, it can send a "you already have an account" email instead.
 3. **Shared rate limits** (for example Redis) if it runs on more than one server.
 4. **Self-host the fonts**, so no request goes to Google.
 5. **Legal:** have a lawyer review `/legal`, which is marked as a draft.
-6. **Sync with Studio:** the block format (with stable block ids and a schema version) is designed so Studio's account sync can share it.
+6. **Studio sign-in and sync (Phase 2):** add a Sign in button to Studio using `tools/desktop-signin.js` (keeping tokens in Windows' secure storage), then the sync API. The block format (stable block ids, a schema version) is designed for it.
+7. **Two-step sign-in** (an authenticator app) as an option for writers who want it.

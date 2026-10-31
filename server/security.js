@@ -53,12 +53,14 @@ function checkSameOrigin(req, allowedOrigins) {
 }
 
 // ---------- bodies ----------
-function readJson(req, limitBytes) {
+// JSON bodies; with `form`, also application/x-www-form-urlencoded (what OAuth clients send).
+function readJson(req, limitBytes, { form = false } = {}) {
   return new Promise((resolve, reject) => {
     const empty = !req.headers['transfer-encoding'] && !Number(req.headers['content-length'] || 0);
     if (empty) { req.resume(); return resolve({}); }
     const type = String(req.headers['content-type'] || '').split(';')[0].trim().toLowerCase();
-    if (type !== 'application/json') return reject(new HttpError(415, 'Requests must be JSON.'));
+    const isForm = form && type === 'application/x-www-form-urlencoded';
+    if (type !== 'application/json' && !isForm) return reject(new HttpError(415, 'Requests must be JSON.'));
     const declared = Number(req.headers['content-length'] || 0);
     if (declared > limitBytes) return reject(new HttpError(413, 'That is too large to save in one go.'));
     const chunks = [];
@@ -80,6 +82,7 @@ function readJson(req, limitBytes) {
       done = true;
       if (!size) return resolve({});
       try {
+        if (isForm) return resolve(Object.fromEntries(new URLSearchParams(Buffer.concat(chunks).toString('utf8'))));
         const value = JSON.parse(Buffer.concat(chunks).toString('utf8'));
         if (!value || typeof value !== 'object' || Array.isArray(value)) throw new Error('not an object');
         resolve(value);

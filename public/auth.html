@@ -46,6 +46,7 @@
               <input class="input" id="si-password" name="password" type="password" autocomplete="current-password" maxlength="200" required>
               <button type="button" class="pw-toggle" aria-label="Show password">Show</button>
             </div>
+            <a class="hint forgot-link" href="/forgot">Forgot your password?</a>
           </div>
           <button class="btn primary block lg" type="submit">Sign in</button>
           <p class="switch">New to Lekhira? <a href="/signup">Create a free account</a></p>
@@ -77,6 +78,47 @@
           <label class="check field"><input type="checkbox" name="agree" required><span>I agree to the <a href="/legal#terms" target="_blank" rel="noopener">Terms</a> and <a href="/legal#privacy" target="_blank" rel="noopener">Privacy Policy</a>.</span></label>
           <button class="btn primary block lg" type="submit">Create account</button>
           <p class="switch">Already have an account? <a href="/signin">Sign in</a></p>
+        </form>
+
+        <!-- forgot password -->
+        <form id="forgot" class="hidden" novalidate>
+          <h1>Forgot your password?</h1>
+          <p class="sub">Enter your email and we’ll send you a link to choose a new one.</p>
+          <div class="form-error hidden" role="alert"></div>
+          <div class="form-done hidden" role="status"></div>
+          <div class="field">
+            <label for="fp-email">Email</label>
+            <input class="input" id="fp-email" name="email" type="email" autocomplete="username" maxlength="254" required>
+          </div>
+          <button class="btn primary block lg" type="submit">Send reset link</button>
+          <p class="switch"><a href="/signin">Back to sign in</a></p>
+        </form>
+
+        <!-- reset password (from the emailed link) -->
+        <form id="reset" class="hidden" novalidate>
+          <h1>Choose a new password</h1>
+          <p class="sub">This signs you out everywhere else, including desktop apps.</p>
+          <div class="form-error hidden" role="alert"></div>
+          <div class="field">
+            <label for="rp-password">New password</label>
+            <div class="pw-wrap">
+              <input class="input" id="rp-password" name="password" type="password" autocomplete="new-password" minlength="10" maxlength="200" required>
+              <button type="button" class="pw-toggle" aria-label="Show password">Show</button>
+            </div>
+            <div class="meter" aria-hidden="true"><i></i></div>
+            <span class="hint" id="pw-hint-reset">At least 10 characters. A short phrase works well.</span>
+          </div>
+          <button class="btn primary block lg" type="submit">Save new password</button>
+          <p class="switch"><a href="/forgot">Ask for a new link</a></p>
+        </form>
+
+        <!-- confirm email (from the emailed link) -->
+        <form id="verify" class="hidden" novalidate>
+          <h1>Confirming your email…</h1>
+          <p class="sub">One moment.</p>
+          <div class="form-error hidden" role="alert"></div>
+          <div class="form-done hidden" role="status"></div>
+          <a class="btn primary block lg hidden" id="verify-continue" href="/app">Continue to your books</a>
         </form>
 
         <p class="security-note"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="5" y="11" width="14" height="10" rx="2"/><path d="M8 11V8a4 4 0 0 1 8 0v3"/></svg>Protected sign-in. Your password is never stored, only a scrambled hash of it.</p>

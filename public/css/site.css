@@ -309,3 +309,18 @@ button, input, select, textarea { font: inherit; color: inherit; }
   .section { padding: 64px 0; }
   .site-header .actions .btn.ghost { display: none; }
 }
+
+/* ---------- account: forgot / reset / confirm, and desktop sign-in ---------- */
+.forgot-link { align-self: flex-end; margin-top: 2px; }
+.form-done { background: rgba(110, 170, 110, 0.1); border: 1px solid rgba(110, 170, 110, 0.3); color: #a8d4a4; padding: 11px 14px; border-radius: 10px; font-size: 14px; margin-bottom: 18px; }
+.consent { text-align: left; max-width: 440px; }
+.consent .brand { margin-bottom: 26px; }
+.consent h1 { font-size: 38px; }
+.consent-who { display: flex; flex-direction: column; padding: 14px 16px; border-radius: 12px; background: var(--surface); border: 1px solid var(--line); margin: 0 0 18px; }
+.consent-who b { font-weight: 600; }
+.consent-who span { color: var(--muted); font-size: 14px; }
+.consent-list { margin: 0 0 12px; padding-left: 20px; color: var(--text-2); }
+.consent-list li { margin: 4px 0; }
+.consent-actions { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-top: 20px; }
+.consent #c-done { margin-top: 18px; color: var(--ok); font-size: 15px; }
+.prose pre { white-space: pre-wrap; overflow-wrap: anywhere; }

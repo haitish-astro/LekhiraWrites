@@ -39,13 +39,15 @@ function page(src, dest, kind) {
 page('index.html', 'index.html', 'home');
 page('auth.html', 'signin/index.html', 'auth');
 page('auth.html', 'signup/index.html', 'auth');
+for (const p of ['forgot', 'reset', 'verify']) page('auth.html', `${p}/index.html`, 'account');
 page('legal.html', 'legal/index.html', 'legal');
 page('404.html', 'not-found/index.html', 'notfound');
 page('app.html', 'app/index.html', 'app');
 // Pages shows 404.html for any address it has no file for, such as /app/book/<id>/<chapter>.
 // Serving the app there lets those links open; preview.js sends anything else to not-found.
 page('app.html', '404.html', 'app');
-for (const f of ['auth.html', 'app.html', 'legal.html']) fs.rmSync(path.join(OUT, f));
+// Desktop sign-in needs the real server, so the preview leaves its page out.
+for (const f of ['auth.html', 'app.html', 'legal.html', 'authorize.html', 'js/authorize.js']) fs.rmSync(path.join(OUT, f));
 
 const css = path.join(OUT, 'css', 'app.css');
 fs.writeFileSync(css, fs.readFileSync(css, 'utf8').replace(/url\("\/img\//g, `url("${BASE}/img/`));
