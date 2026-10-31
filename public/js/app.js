@@ -5,7 +5,7 @@
 
 const api = window.LekhiraApi;
 
-const DEFAULT_PREFS = { theme: 'charcoal', font: 'Georgia', size: 12, lineHeight: 1.7, paragraph: 'indent', align: 'left', smartPunct: true, typewriter: false };
+const DEFAULT_PREFS = { theme: 'charcoal', font: 'Georgia', size: 12, lineHeight: 1.7, paragraph: 'indent', align: 'left', pageSize: 'book', smartPunct: true, typewriter: false };
 const THEMES = [
   ['charcoal', 'Charcoal'],
   ['ink', 'Ink'],
@@ -17,13 +17,13 @@ const COVERS = ['gold', 'ink', 'sage', 'rose', 'dusk', 'paper'];
 const SIZES = [10, 10.5, 11, 11.5, 12, 13, 14, 16, 18, 20];
 const STATUS_NAMES = { idea: 'Idea', draft: 'Drafting', revise: 'Revising', done: 'Done' };
 const LINES = [[1.3, 'Tight'], [1.5, 'Snug'], [1.7, 'Comfortable'], [2, 'Double']];
-const ZOOM = 1.25;   // Studio's default page zoom; sizes are in points, as in Studio
 
 let user = null;
 let book = null;          // the open book (server row)
 let chapters = [];        // chapter list for the open book
 let current = null;       // the open chapter, with its doc
 let editor = null;
+let layout = null;        // real pages (pages.js)
 let todayWords = 0;
 let stats = null;
 const titleEl = () => $('#chapterTitle');
@@ -35,10 +35,12 @@ function applyPrefs() {
   const page = $('#page');
   page.className = `theme-${p.theme} para-${p.paragraph} align-${p.align}`;
   page.style.setProperty('--font', fontCSS(p.font));
-  page.style.setProperty('--size', `${p.size * ZOOM}pt`);
+  page.style.setProperty('--size', `${p.size}pt`);
   page.style.setProperty('--lh', p.lineHeight);
   document.body.classList.toggle('typewriter', !!p.typewriter);
   if (editor) editor.prefs = p;
+  if (layout) layout.setSize(p.pageSize);   // re-lays every page: font, size and spacing change line breaks
+  $('#bkPageSize').value = p.pageSize;
   $('#fontSelect').value = $('#bkFont').value = p.font;
   $('#sizeSelect').value = $('#bkSize').value = String(p.size);
   $('#bkLine').value = String(p.lineHeight);
@@ -63,6 +65,8 @@ function wireRoom() {
   $('#fontSelect').onchange = $('#bkFont').onchange = (e) => setPref('font', e.target.value);
   $('#sizeSelect').onchange = $('#bkSize').onchange = (e) => setPref('size', Number(e.target.value));
   $('#bkLine').onchange = (e) => setPref('lineHeight', Number(e.target.value));
+  $('#bkPageSize').replaceChildren(...Object.entries(window.LekhiraPages.PAGE_SIZES).map(([k, s]) => el('option', { value: k, text: s.label })));
+  $('#bkPageSize').onchange = (e) => setPref('pageSize', e.target.value);
   for (const b of $$('#bkPara button')) b.onclick = () => setPref('paragraph', b.dataset.v);
   for (const b of $$('#bkAlign button')) b.onclick = () => setPref('align', b.dataset.v);
   $('#optPunct').onchange = (e) => setPref('smartPunct', e.target.checked);
@@ -529,6 +533,8 @@ async function loadChapter(id, { skipFlush = false } = {}) {
   saver.dirty = false;
   saver.savedWords = chapter.words;
   editor.load(chapter.doc);
+  layout.setChapter(chapter.id);
+  layout.schedule(0, true);
   titleEl().textContent = chapter.title;
   $('#scroller').scrollTop = 0;
   try { localStorage.setItem(`lw:last:${book.id}`, id); } catch { /* ignore */ }
@@ -550,7 +556,9 @@ async function offerBackup(chapter) {
     actions: [{ label: 'Discard', value: 'discard' }, { label: 'Restore my changes', kind: 'primary', value: 'restore' }],
   });
   if (choice === 'restore' && current && current.id === chapter.id) {
+    layout.pushUndo('cmd');
     editor.load(backup.doc);
+    layout.schedule(0, true);
     saver.changed();
     await saver.save({ force: true });
     toast('Your changes were restored and saved');
@@ -586,7 +594,8 @@ function reflectSelection(s) {
 
 function command(cmd) {
   if (cmd === 'sceneBreak') editor.insertBreak();
-  else if (cmd === 'undo' || cmd === 'redo') editor.history(cmd);
+  else if (cmd === 'undo') layout.undo();
+  else if (cmd === 'redo') layout.redo();
   else editor.mark(cmd);
 }
 
@@ -627,7 +636,7 @@ async function wordCountDialog() {
     body: el('table', { class: 'wc-table' },
       el('thead', {}, el('tr', {}, el('th'), cols.map(([l]) => el('th', { text: l })))),
       el('tbody', {}, row('Words', 'words'), row('Characters', 'chars'), row('Characters without spaces', 'noSpace'), row('Paragraphs', 'paras'),
-        el('tr', {}, el('th', { text: 'Pages' }), el('td', { text: `about ${fmt(Math.max(1, Math.round(chapter.words / 250)))}` }), el('td', { text: `about ${fmt(Math.max(1, Math.round(whole.words / 250)))} in print` }), picked ? el('td') : null))),
+        el('tr', {}, el('th', { text: 'Pages' }), el('td', { text: fmt(layout.pages) }), el('td', { text: `about ${fmt(Math.max(1, Math.round(whole.words / 250)))} in print` }), picked ? el('td') : null))),
     actions: [{ label: 'Close', kind: 'primary', value: true }],
   });
 }
@@ -708,7 +717,9 @@ async function restoreRevision(ch, v) {
     if (current && current.id === ch.id) {
       current.version = r.chapter.version;
       saver.savedWords = current.words = r.chapter.words;
+      layout.pushUndo('cmd');
       editor.load(r.chapter.doc);
+      layout.schedule(0, true);
       const meta = chapters.find((c) => c.id === ch.id);
       if (meta) { meta.words = r.chapter.words; meta.version = r.chapter.version; }
       renderSidebar();
@@ -785,7 +796,7 @@ function openStudio() {
   openPanel('Lekhira Studio', (body) => {
     body.append(el('p', { class: 'hint', text: 'Lekhira Writes has what you need to write. Lekhira Studio, our desktop app, is where a manuscript becomes a book. It looks and works like Writes, plus:' }));
     const items = [
-      ['pages', 'Real book pages', 'Write straight onto typeset pages at your book’s own trim size.'],
+      ['pages', 'Typeset book design', 'Your book’s own trim size, running heads, drop caps and a live, page-turning print preview.'],
       ['sparkle', 'Craft coach & Writing DNA', 'Readability, rhythm and habits, learned from your own style. Never generated.'],
       ['atlas', 'Story Atlas & Outline', 'Characters, places and threads, with every chapter they appear in.'],
       ['bookOpen', 'Publish', 'Paperback-ready PDF, EPUB 3 and manuscript DOCX, with a live preview.'],
@@ -1014,10 +1025,17 @@ async function boot() {
   paintAvatar();
   editor = new window.LekhiraEditor.Editor($('#editor'), {
     prefs: prefs(),
-    onChange: () => { saver.changed(); updateCounts(); },
+    onChange: () => { layout.paginate(); saver.changed(); updateCounts(); },
     onSelection: reflectSelection,
+    beforeCommand: () => layout.pushUndo('cmd'),
+  });
+  layout = new window.LekhiraPages.PageLayout({
+    editor, page: $('#page'), scroller: $('#scroller'), markers: $('#pageMarkers'),
+    onPages: (n) => { $('#sbPages').textContent = plural(n, 'page'); },
   });
   applyPrefs();
+  // Web fonts change line breaks once they arrive.
+  document.fonts.ready.then(() => layout.schedule(0, true));
   await route();
   document.body.classList.remove('booting');
 }

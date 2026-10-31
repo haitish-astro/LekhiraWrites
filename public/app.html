@@ -14,6 +14,7 @@
   <script src="/js/util.js" defer></script>
   <script src="/js/api.js" defer></script>
   <script src="/js/editor.js" defer></script>
+  <script src="/js/pages.js" defer></script>
   <script src="/js/app.js" defer></script>
 </head>
 <body class="booting">
@@ -129,6 +130,7 @@
             <h1 id="chapterTitle" contenteditable="plaintext-only" spellcheck="true" data-placeholder="Chapter title"></h1>
           </header>
           <div id="editor" contenteditable="true" spellcheck="true" data-placeholder="Begin here…" role="textbox" aria-multiline="true" aria-label="Chapter text"></div>
+          <div id="pageMarkers" aria-hidden="true"></div>
         </article>
         <div class="page-next"><button class="btn ghost" id="nextChapter"></button></div>
       </div>
@@ -138,6 +140,8 @@
           <button class="sb-link" id="sbChapterWords" title="Word count (Ctrl+Shift+C)"></button>
           <span class="sb-dot hidden" id="sbSelDot"></span>
           <span id="sbSelection"></span>
+          <span class="sb-dot"></span>
+          <span id="sbPages"></span>
         </div>
         <div class="sb-right">
           <button class="goal" id="goalBtn" title="Today's writing goal">
@@ -161,6 +165,7 @@
   <div id="roomPop" class="room-pop hidden" role="dialog" aria-label="Writing room">
     <div class="room-h"><b>Writing room</b><small>How the page looks while you write. It only changes your screen.</small></div>
     <div class="field"><label class="field-label">Page colour</label><div class="swatches" id="bkTheme"></div></div>
+    <div class="field"><label class="field-label" for="bkPageSize">Page size</label><select id="bkPageSize"></select></div>
     <div class="field"><label class="field-label" for="bkFont">Font</label><select id="bkFont"></select></div>
     <div class="field row">
       <div><label class="field-label" for="bkSize">Size</label><select id="bkSize"></select></div>

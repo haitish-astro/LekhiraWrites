@@ -18,9 +18,12 @@ window.LekhiraEditor = (() => {
   const countWords = (s) => (s.match(WORD) || []).length;
 
   class Editor {
-    constructor(root, { onChange, onSelection, prefs }) {
+    constructor(root, { onChange, onSelection, beforeCommand, prefs }) {
       this.root = root;
       this.onChange = onChange || (() => {});
+      // Called before a change the browser doesn't announce with beforeinput (formatting,
+      // paste, scene breaks), so the page layout can take an undo snapshot first.
+      this.beforeCommand = beforeCommand || (() => {});
       this.onSelection = onSelection || (() => {});
       this.prefs = prefs || {};
       this.loading = false;
@@ -183,6 +186,7 @@ window.LekhiraEditor = (() => {
     setBlock(type) {
       const sel = window.getSelection();
       if (!this.hasFocus()) return;
+      this.beforeCommand();
       const r = sel.getRangeAt(0);
       const saved = [r.startContainer, r.startOffset, r.endContainer, r.endOffset];
       const swapped = new Map();
@@ -209,6 +213,7 @@ window.LekhiraEditor = (() => {
 
     mark(cmd) {
       this.root.focus();
+      this.beforeCommand();
       document.execCommand(cmd, false, null);
       this.onSelection(this.state());
     }
@@ -221,6 +226,7 @@ window.LekhiraEditor = (() => {
     insertBreak() {
       const sel = window.getSelection();
       if (!this.hasFocus()) { this.root.focus(); }
+      this.beforeCommand();
       const blocks = this.selectedBlocks();
       const at = blocks[blocks.length - 1] || this.root.lastChild;
       const hr = this.block('break');
@@ -259,6 +265,7 @@ window.LekhiraEditor = (() => {
       if (e.key === 'Enter' && e.shiftKey) {
         // Soft line breaks aren't part of the book model; make a new paragraph instead.
         e.preventDefault();
+        this.beforeCommand();
         document.execCommand('insertParagraph');
         return;
       }
@@ -268,6 +275,7 @@ window.LekhiraEditor = (() => {
         const blk = this.topBlock(sel.anchorNode);
         if (blk && /^(H2|H3|H4|BLOCKQUOTE)$/.test(blk.tagName) && sel.isCollapsed && this.atEnd(blk, sel.getRangeAt(0))) {
           e.preventDefault();
+          this.beforeCommand();
           const p = this.block('p');
           blk.after(p);
           const r = document.createRange();
@@ -335,6 +343,7 @@ window.LekhiraEditor = (() => {
     insertPlainText(raw) {
       const text = raw.replace(/\r\n?/g, '\n').replace(/[\u0000-\u0008\u000b-\u001f\u007f‪-‮⁦-⁩﻿]/g, '');
       if (!text) return;
+      this.beforeCommand();
       const lines = text.split(/\n+/);
       if (lines.length === 1) { document.execCommand('insertText', false, lines[0]); return; }
       const sel = window.getSelection();

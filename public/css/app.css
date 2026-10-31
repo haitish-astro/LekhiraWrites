@@ -27,10 +27,12 @@
   --page-ink: #ece9e4;
   --page-ink-2: #a8a49d;
   --page-edge: rgba(255, 255, 255, 0.05);
-  --page-w: 720px;
-  --page-m: 90px;
+  --page-w: 576px;
+  --page-h: 864px;
+  --page-m: 72px;
+  --zoom: 1.25;
   --font: Georgia, serif;
-  --size: 15pt;
+  --size: 12pt;
   --lh: 1.7;
   color-scheme: dark;
 }
@@ -317,18 +319,30 @@ body.no-sidebar #sidebar { margin-left: -248px; opacity: 0; }
   scroll-behavior: auto;
 }
 body.typewriter #scroller { padding-bottom: 60vh; }
+/* Real pages, as in Studio: the text is one document, the sheets are drawn behind it
+   (pages.js), and the whole page is zoomed to fit the window. */
 #page {
-  max-width: var(--page-w);
+  zoom: var(--zoom);
+  width: var(--page-w);
+  min-height: var(--page-h);
   margin: 0 auto;
   padding: var(--page-m);
-  padding-top: calc(var(--page-m) * 1.6);
-  background: var(--page-bg);
   color: var(--page-ink);
-  border-radius: 2px;
-  box-shadow: 0 0 0 1px var(--page-edge), 0 30px 70px -30px rgba(0,0,0,.75), 0 2px 8px rgba(0,0,0,.25);
+  position: relative;
+  isolation: isolate;
   user-select: text;
-  transition: color .4s, background .4s;
+  transition: color .4s;
 }
+#pageMarkers { position: absolute; inset: 0; z-index: -1; pointer-events: none; }
+#pageMarkers .sheet {
+  position: absolute; left: 0; right: 0;
+  background: var(--page-bg);
+  border-radius: 2px;
+  box-shadow: 0 0 0 1px var(--page-edge), 0 24px 60px -30px rgba(0,0,0,.75), 0 2px 8px rgba(0,0,0,.25);
+  transition: background .4s;
+}
+#pageMarkers .folio { position: absolute; left: 0; right: 0; bottom: calc(var(--page-m) * .42); text-align: center; font: 11px var(--font); color: var(--page-ink-2); opacity: .7; }
+#editor .pb { display: inline-block; width: 100%; vertical-align: top; pointer-events: none; user-select: none; }
 .chapter-head { text-align: center; margin-bottom: calc(var(--size) * 2.6); }
 .chapter-label {
   font-family: var(--font); font-size: calc(var(--size) * .72);
@@ -381,7 +395,7 @@ body.typewriter #scroller { padding-bottom: 60vh; }
 #page:is(.theme-paper, .theme-warm) ::selection { background: rgba(160, 120, 50, .25); }
 #page:is(.theme-paper, .theme-warm) #editor { caret-color: #9a7432; }
 
-.page-next { max-width: var(--page-w); margin: 18px auto 0; display: flex; justify-content: flex-end; }
+.page-next { max-width: var(--page-outer, 720px); margin: 18px auto 0; display: flex; justify-content: flex-end; }
 .page-next .btn { color: var(--muted); }
 .page-next .btn:hover { color: var(--text); }
 
@@ -607,7 +621,6 @@ kbd { font: 11px var(--ui); background: var(--surface-3); border-radius: 4px; pa
   body:not(.sidebar-open) #sidebar { margin-left: -248px; opacity: 0; }
   #panel { position: absolute; top: 0; bottom: 0; right: 0; z-index: 30; }
   #scroller { padding: 20px 10px 30vh; }
-  #page { --page-m: 34px; }
   .studio-pill span, .doc-title { display: none; }
   #titlebar { grid-template-columns: 1fr auto; }
   .lib-inner { padding: 36px 18px 60px; }
