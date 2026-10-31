@@ -10,13 +10,9 @@
 
 const PAGE_GAP = 28;               // desk space between sheets, in page pixels
 const BLOCK_TAGS = new Set(['P', 'H1', 'H2', 'H3', 'H4', 'LI', 'BLOCKQUOTE', 'HR', 'DIV', 'BR']);
-// Page sizes in inches: width, height, margin. "Book" is Studio's default 6 × 9 trim.
-const PAGE_SIZES = {
-  book: { label: 'Book (6 × 9 in)', w: 6, h: 9, m: 0.75 },
-  a5: { label: 'A5', w: 5.83, h: 8.27, m: 0.7 },
-  letter: { label: 'US Letter', w: 8.5, h: 11, m: 1 },
-  a4: { label: 'A4', w: 8.27, h: 11.69, m: 1 },
-};
+// The page, in inches: Studio's default 6 × 9 book trim with 0.75 in margins. Writes keeps
+// this one size; other trims (and custom sizes) are part of Lekhira Studio.
+const PAGE = { w: 6, h: 9, m: 0.75 };
 const MAX_ZOOM = 1.25;             // Studio's default zoom
 
 class PageLayout {
@@ -27,7 +23,7 @@ class PageLayout {
     this.scroller = scroller;
     this.markers = markers;
     this.onPages = onPages || (() => {});
-    this.size = PAGE_SIZES.book;
+    this.size = PAGE;
     this.sheetKey = '';
     this.pages = 1;
     this.composing = false;
@@ -39,8 +35,8 @@ class PageLayout {
   }
 
   // ---------- size & zoom ----------
-  setSize(key) {
-    this.size = PAGE_SIZES[key] || PAGE_SIZES.book;
+  // Sets the page size and re-lays every page (font, size and spacing change line breaks).
+  relayout() {
     const s = this.page.style;
     s.setProperty('--page-w', `${this.size.w * 96}px`);
     s.setProperty('--page-h', `${this.size.h * 96}px`);
@@ -404,4 +400,4 @@ class PageLayout {
   }
 }
 
-window.LekhiraPages = { PageLayout, PAGE_SIZES };
+window.LekhiraPages = { PageLayout, PAGE };

@@ -5,7 +5,7 @@
 
 const api = window.LekhiraApi;
 
-const DEFAULT_PREFS = { theme: 'charcoal', font: 'Georgia', size: 12, lineHeight: 1.7, paragraph: 'indent', align: 'left', pageSize: 'book', smartPunct: true, typewriter: false };
+const DEFAULT_PREFS = { theme: 'charcoal', font: 'Georgia', size: 12, lineHeight: 1.7, paragraph: 'indent', align: 'left', smartPunct: true, typewriter: false };
 const THEMES = [
   ['charcoal', 'Charcoal'],
   ['ink', 'Ink'],
@@ -39,8 +39,7 @@ function applyPrefs() {
   page.style.setProperty('--lh', p.lineHeight);
   document.body.classList.toggle('typewriter', !!p.typewriter);
   if (editor) editor.prefs = p;
-  if (layout) layout.setSize(p.pageSize);   // re-lays every page: font, size and spacing change line breaks
-  $('#bkPageSize').value = p.pageSize;
+  if (layout) layout.relayout();   // font, size and spacing change line breaks
   $('#fontSelect').value = $('#bkFont').value = p.font;
   $('#sizeSelect').value = $('#bkSize').value = String(p.size);
   $('#bkLine').value = String(p.lineHeight);
@@ -65,8 +64,6 @@ function wireRoom() {
   $('#fontSelect').onchange = $('#bkFont').onchange = (e) => setPref('font', e.target.value);
   $('#sizeSelect').onchange = $('#bkSize').onchange = (e) => setPref('size', Number(e.target.value));
   $('#bkLine').onchange = (e) => setPref('lineHeight', Number(e.target.value));
-  $('#bkPageSize').replaceChildren(...Object.entries(window.LekhiraPages.PAGE_SIZES).map(([k, s]) => el('option', { value: k, text: s.label })));
-  $('#bkPageSize').onchange = (e) => setPref('pageSize', e.target.value);
   for (const b of $$('#bkPara button')) b.onclick = () => setPref('paragraph', b.dataset.v);
   for (const b of $$('#bkAlign button')) b.onclick = () => setPref('align', b.dataset.v);
   $('#optPunct').onchange = (e) => setPref('smartPunct', e.target.checked);

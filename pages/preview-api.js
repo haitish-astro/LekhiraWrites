@@ -142,7 +142,6 @@
     if (LINES.has(input.lineHeight)) p.lineHeight = input.lineHeight;
     if (input.paragraph === 'indent' || input.paragraph === 'spaced') p.paragraph = input.paragraph;
     if (input.align === 'left' || input.align === 'justify') p.align = input.align;
-    if (['book', 'a5', 'letter', 'a4'].includes(input.pageSize)) p.pageSize = input.pageSize;
     if (typeof input.smartPunct === 'boolean') p.smartPunct = input.smartPunct;
     if (typeof input.typewriter === 'boolean') p.typewriter = input.typewriter;
     return p;
