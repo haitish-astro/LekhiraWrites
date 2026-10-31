@@ -4,7 +4,7 @@ The free web writing editor from Lekhira: accounts, cloud saving and the essenti
 
 ## Run it locally
 
-Needs Node 22.13 or newer (it uses Node's built-in SQLite). There are no packages to install.
+Needs Node 22.13 or newer (it uses Node's built-in SQLite). On this computer there's nothing to install: the one package, `pg`, is only loaded when the server is given a Postgres database (see **Database** below). Run `npm ci` once before `npm run test:pg`.
 
 - **Easiest:** double-click `Start Lekhira Writes.cmd` in this folder. The browser opens once the server is ready. Close the window to stop it.
 - **From the repo root** (`Puran Studio`):
@@ -53,7 +53,18 @@ The code follows Studio's conventions too: `public/js/util.js` mirrors `src/util
 npm test
 ```
 
-`npm test` starts a throwaway server and checks the API and its security rules (33 checks).
+`npm test` starts a throwaway server and checks the API and its security rules (34 checks) on SQLite. `npm run test:pg` runs the same checks on Postgres (a throwaway one inside the test, or a real one with `TEST_DATABASE_URL`). GitHub Actions runs both.
+
+## Database
+
+The server keeps everything in one of two databases, with the same tables and queries (`server/db.js`):
+
+- **SQLite** (default): the file `data/lekhira-writes.db`. For this computer and the tests.
+- **Postgres**, when `DATABASE_URL` is set: Supabase in production. The tables are created on first start.
+
+Going live (Render + Supabase + Resend), step by step: [docs/GO-LIVE.md](docs/GO-LIVE.md).
+
+To use Supabase: in the project, open **Connect** and copy the **Session pooler** connection string (port 5432; it works from servers without IPv6), put the database password in it, and set it as `DATABASE_URL` in the host's secret settings, never in the code. The connection uses TLS with the certificate checked: download the CA certificate from the project's **Database settings → SSL configuration** and paste its text into `DATABASE_CA`. The server only talks to Supabase as a database: Supabase's own login and its public data API aren't used, so you can leave the Data API off.
 
 ## The Lekhira account (Phase 1)
 One account for Writes and, soon, Lekhira Writing Studio. While testing, one server plays both parts of the planned set-up:
@@ -105,7 +116,7 @@ It opens your browser at the Allow page (sign in and confirm your email first), 
 - **No stored markup:** chapters are saved as structured blocks of plain text (`server/doc.js`), never as HTML. The page rebuilds them with text nodes, and paste and drop insert plain text only.
 - **Headers:** a strict Content Security Policy (no inline scripts or styles, no frames, `connect-src 'self'`), plus `nosniff`, `DENY` framing, COOP/CORP, a Permissions-Policy, and HSTS in production. The `Host` header is checked to block DNS rebinding.
 - **Limits:** caps on request size and timeouts, the number of books and chapters, and chapter length. Static files come only from known folders and file types.
-- **No third-party code** on the server, and none in the browser apart from Google Fonts.
+- **Almost no third-party code:** the server's only package is `pg`, the standard Postgres driver (pinned to an exact version and watched by Dependabot), and the browser loads nothing else apart from Google Fonts.
 
 ## Configuration
 | Variable | Default | |
@@ -117,11 +128,14 @@ It opens your browser at the Allow page (sign in and confirm your email first), 
 | `EMAIL_PROVIDER` | `outbox` (`resend` in production) | `outbox`, `resend` or `memory` (tests) |
 | `RESEND_API_KEY`, `EMAIL_FROM` | | For `resend`, e.g. `Lekhira <no-reply@lekhira.com>` |
 | `NODE_ENV` | | `production` turns on Secure cookies and HSTS |
-| `DATA_DIR` | `./data` | |
-| `TRUST_PROXY` | | `1` behind a reverse proxy that sets `X-Forwarded-For` |
+| `DATA_DIR` | `./data` | The SQLite file and the dev outbox |
+| `DATABASE_URL` | | A Postgres address (Supabase). Unset means SQLite |
+| `DATABASE_POOL` | `10` | Postgres connections to keep open |
+| `DATABASE_CA` | | The database's CA certificate (PEM text), for Supabase |
+| `TRUST_PROXY` | | How many proxies are in front: `1` on Render, `2` with Cloudflare's proxy in front of Render |
 
 ## Before it goes public
-1. **HTTPS hosting** behind a reverse proxy (Caddy or nginx), with `NODE_ENV=production`, plus daily encrypted backups of `data/`.
+1. **HTTPS hosting** (planned: Render, with the database on Supabase and its daily backups), with `NODE_ENV=production`.
 2. **Email:** set up Resend (or another provider) for lekhira.com, with its SPF, DKIM and DMARC records. Sign-up still says when an email is already registered; with email in place, it can send a "you already have an account" email instead.
 3. **Shared rate limits** (for example Redis) if it runs on more than one server.
 4. **Self-host the fonts**, so no request goes to Google.

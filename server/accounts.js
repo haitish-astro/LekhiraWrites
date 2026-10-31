@@ -12,7 +12,6 @@
 // Studio never sees the password; any app can be signed out from the Account panel.
 'use strict';
 const crypto = require('node:crypto');
-const { tx } = require('./db');
 const auth = require('./auth');
 const { HttpError, limit, sha256, newId, isId } = require('./security');
 const { templates } = require('./mail');
@@ -68,26 +67,27 @@ function register(r, ctx) {
   const forgotLink = link('/forgot');
 
   // ---------- email links ----------
-  function issueEmailToken(user, purpose, ttl) {
+  async function issueEmailToken(user, purpose, ttl) {
     const raw = secret('');
     const now = Date.now();
-    db.prepare('INSERT INTO email_tokens (token_hash, user_id, purpose, email, created_at, expires_at) VALUES (?, ?, ?, ?, ?, ?)')
-      .run(sha256(raw), user.id, purpose, user.email, now, now + ttl);
+    await db.run('INSERT INTO email_tokens (token_hash, user_id, purpose, email, created_at, expires_at) VALUES (?, ?, ?, ?, ?, ?)', sha256(raw), user.id, purpose, user.email, now, now + ttl);
     return raw;
   }
-  function consumeEmailToken(raw, purpose) {
+  async function consumeEmailToken(raw, purpose) {
     if (typeof raw !== 'string' || raw.length < 20 || raw.length > 100) throw new HttpError(400, 'This link isn’t valid. Please ask for a new one.');
-    const row = db.prepare('SELECT * FROM email_tokens WHERE token_hash = ? AND purpose = ?').get(sha256(raw), purpose);
+    const row = await db.get('SELECT * FROM email_tokens WHERE token_hash = ? AND purpose = ?', sha256(raw), purpose);
     if (!row || row.used_at) throw new HttpError(400, 'This link has already been used or isn’t valid. Please ask for a new one.');
     if (row.expires_at < Date.now()) throw new HttpError(400, 'This link has expired. Please ask for a new one.');
-    const user = db.prepare('SELECT * FROM users WHERE id = ?').get(row.user_id);
+    const user = await db.get('SELECT * FROM users WHERE id = ?', row.user_id);
     // A link sent to an old address doesn't prove the current one.
     if (!user || user.email !== row.email) throw new HttpError(400, 'This link isn’t valid any more. Please ask for a new one.');
-    db.prepare('UPDATE email_tokens SET used_at = ? WHERE user_id = ? AND purpose = ? AND used_at IS NULL').run(Date.now(), user.id, purpose);
+    // Only one request can use a link, even if two arrive at once.
+    const used = await db.run('UPDATE email_tokens SET used_at = ? WHERE user_id = ? AND purpose = ? AND used_at IS NULL', Date.now(), user.id, purpose);
+    if (!used.changes) throw new HttpError(400, 'This link has already been used or isn’t valid. Please ask for a new one.');
     return user;
   }
-  function sendVerification(user) {
-    const raw = issueEmailToken(user, 'verify', VERIFY_TTL);
+  async function sendVerification(user) {
+    const raw = await issueEmailToken(user, 'verify', VERIFY_TTL);
     // The token travels in the #fragment, so it never reaches server logs or other sites.
     mailer.send({ kind: 'verify', to: user.email, ...templates.verify({ name: user.name, link: link(`/verify#token=${raw}`) }) });
   }
@@ -95,7 +95,7 @@ function register(r, ctx) {
   // ---------- sign-in alerts ----------
   // Each browser gets a random device id (a cookie). Signing in from one we haven't seen for
   // this account sends an email, except for the very first sign-in.
-  function noteSignIn(req, res, user, { quiet = false } = {}) {
+  async function noteSignIn(req, res, user, { quiet = false } = {}) {
     let device = req.cookies.device;
     if (!device || !/^[A-Za-z0-9_-]{20,64}$/.test(device)) {
       device = newId(24);
@@ -103,11 +103,10 @@ function register(r, ctx) {
     }
     const hash = sha256(device);
     const now = Date.now();
-    const known = db.prepare('SELECT 1 FROM devices WHERE user_id = ? AND device_hash = ?').get(user.id, hash);
-    const any = db.prepare('SELECT 1 FROM devices WHERE user_id = ? LIMIT 1').get(user.id);
-    db.prepare(`INSERT INTO devices (user_id, device_hash, agent, first_seen, last_seen) VALUES (?, ?, ?, ?, ?)
-      ON CONFLICT(user_id, device_hash) DO UPDATE SET last_seen = excluded.last_seen, agent = excluded.agent`)
-      .run(user.id, hash, String(req.headers['user-agent'] || '').slice(0, 200), now, now);
+    const known = await db.get('SELECT 1 FROM devices WHERE user_id = ? AND device_hash = ?', user.id, hash);
+    const any = await db.get('SELECT 1 FROM devices WHERE user_id = ? LIMIT 1', user.id);
+    await db.run(`INSERT INTO devices (user_id, device_hash, agent, first_seen, last_seen) VALUES (?, ?, ?, ?, ?)
+      ON CONFLICT(user_id, device_hash) DO UPDATE SET last_seen = excluded.last_seen, agent = excluded.agent`, user.id, hash, String(req.headers['user-agent'] || '').slice(0, 200), now, now);
     if (!known && any && !quiet) {
       mailer.send({ kind: 'new-sign-in', to: user.email, ...templates.newSignIn({
         name: user.name, what: describeAgent(req.headers['user-agent']), when: stamp(now), where: `Network address ${req.ip}`, forgotLink,
@@ -115,35 +114,35 @@ function register(r, ctx) {
     }
   }
 
-  function revokeAllApps(userId) {
-    db.prepare('UPDATE app_grants SET revoked_at = ? WHERE user_id = ? AND revoked_at IS NULL').run(Date.now(), userId);
+  async function revokeAllApps(userId, q = db) {
+    await q.run('UPDATE app_grants SET revoked_at = ? WHERE user_id = ? AND revoked_at IS NULL', Date.now(), userId);
   }
 
   // ---------- verify email ----------
-  r.post('/api/auth/verify', { auth: false }, (req, res, body) => {
+  r.post('/api/auth/verify', { auth: false }, async (req, res, body) => {
     limit(limiter, `verify:${req.ip}`, 20, 15 * 60_000);
-    const user = consumeEmailToken(body.token, 'verify');
-    db.prepare('UPDATE users SET email_verified_at = COALESCE(email_verified_at, ?) WHERE id = ?').run(Date.now(), user.id);
+    const user = await consumeEmailToken(body.token, 'verify');
+    await db.run('UPDATE users SET email_verified_at = COALESCE(email_verified_at, ?) WHERE id = ?', Date.now(), user.id);
     return { ok: true, email: user.email };
   });
 
-  r.post('/api/me/verify/resend', {}, (req) => {
-    const user = db.prepare('SELECT * FROM users WHERE id = ?').get(req.user.id);
+  r.post('/api/me/verify/resend', {}, async (req) => {
+    const user = await db.get('SELECT * FROM users WHERE id = ?', req.user.id);
     if (user.email_verified_at) return { ok: true, already: true };
     limit(limiter, `verify-send:${user.id}`, 3, 3600_000, 'We’ve sent a few links already. Please check your inbox (and spam), or try again in an hour.');
-    sendVerification(user);
+    await sendVerification(user);
     return { ok: true };
   });
 
   // ---------- forgot / reset password ----------
   // Always the same answer, so this can't be used to find out who has an account.
-  r.post('/api/auth/forgot', { auth: false }, (req, res, body) => {
+  r.post('/api/auth/forgot', { auth: false }, async (req, res, body) => {
     limit(limiter, `forgot-ip:${req.ip}`, 6, 15 * 60_000);
     const email = typeof body.email === 'string' ? body.email.trim().toLowerCase().slice(0, 254) : '';
     if (!email) throw new HttpError(400, 'Please enter your email address.', { field: 'email' });
-    const user = db.prepare('SELECT * FROM users WHERE email = ?').get(email);
+    const user = await db.get('SELECT * FROM users WHERE email = ?', email);
     if (user && limiter.take(`forgot-email:${email}`, 3, 3600_000) === 0) {
-      const raw = issueEmailToken(user, 'reset', RESET_TTL);
+      const raw = await issueEmailToken(user, 'reset', RESET_TTL);
       mailer.send({ kind: 'reset', to: user.email, ...templates.reset({ name: user.name, link: link(`/reset#token=${raw}`) }) });
     }
     return { ok: true, message: 'If that email has a Lekhira account, a reset link is on its way. It works for 30 minutes.' };
@@ -152,33 +151,32 @@ function register(r, ctx) {
   r.post('/api/auth/reset', { auth: false }, async (req, res, body) => {
     limit(limiter, `reset:${req.ip}`, 10, 15 * 60_000);
     // Check the new password before using up the link, so a typo doesn't waste it.
-    const peek = typeof body.token === 'string' ? db.prepare('SELECT u.email, u.name FROM email_tokens t JOIN users u ON u.id = t.user_id WHERE t.token_hash = ?').get(sha256(body.token)) : null;
+    const peek = typeof body.token === 'string' ? await db.get('SELECT u.email, u.name FROM email_tokens t JOIN users u ON u.id = t.user_id WHERE t.token_hash = ?', sha256(body.token)) : null;
     const password = auth.checkNewPassword(body.password, peek || {});
     const hash = await auth.hashPassword(password);
-    const user = consumeEmailToken(body.token, 'reset');
+    const user = await consumeEmailToken(body.token, 'reset');
     const now = Date.now();
-    tx(db, () => {
+    await db.tx(async (t) => {
       // Opening the emailed link also proves the address.
-      db.prepare('UPDATE users SET pw_hash = ?, pw_changed_at = ?, email_verified_at = COALESCE(email_verified_at, ?) WHERE id = ?').run(hash, now, now, user.id);
-      db.prepare('DELETE FROM sessions WHERE user_id = ?').run(user.id);
-      revokeAllApps(user.id);
+      await t.run('UPDATE users SET pw_hash = ?, pw_changed_at = ?, email_verified_at = COALESCE(email_verified_at, ?) WHERE id = ?', hash, now, now, user.id);
+      await t.run('DELETE FROM sessions WHERE user_id = ?', user.id);
+      await revokeAllApps(user.id, t);
     });
     mailer.send({ kind: 'password-changed', to: user.email, ...templates.passwordChanged({ name: user.name, forgotLink }) });
-    cookies.set(res, auth.createSession(db, user.id, req.headers['user-agent']));
-    noteSignIn(req, res, user, { quiet: true });
+    cookies.set(res, await auth.createSession(db, user.id, req.headers['user-agent']));
+    await noteSignIn(req, res, user, { quiet: true });
     return { ok: true };
   });
 
   // ---------- desktop sign-in ----------
-  r.post('/api/oauth/approve', {}, (req, res, body) => {
+  r.post('/api/oauth/approve', {}, async (req, res, body) => {
     limit(limiter, `approve:${req.user.id}`, 20, 15 * 60_000);
     const p = authorizeParams(body);
-    const user = db.prepare('SELECT * FROM users WHERE id = ?').get(req.user.id);
+    const user = await db.get('SELECT * FROM users WHERE id = ?', req.user.id);
     if (!user.email_verified_at) throw new HttpError(403, 'Please confirm your email address before signing in to Lekhira Studio. We can send the link again.', { needsVerification: true });
     const code = secret('');
     const now = Date.now();
-    db.prepare('INSERT INTO oauth_codes (code_hash, user_id, client_id, redirect_uri, challenge, device_name, created_at, expires_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?)')
-      .run(sha256(code), user.id, p.clientId, p.redirectUri, p.challenge, p.deviceName, now, now + CODE_TTL);
+    await db.run('INSERT INTO oauth_codes (code_hash, user_id, client_id, redirect_uri, challenge, device_name, created_at, expires_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?)', sha256(code), user.id, p.clientId, p.redirectUri, p.challenge, p.deviceName, now, now + CODE_TTL);
     const to = new URL(p.redirectUri);
     to.searchParams.set('code', code);
     to.searchParams.set('state', p.state);
@@ -193,20 +191,20 @@ function register(r, ctx) {
     return { redirect: to.toString() };
   });
 
-  function issueGrant(user, clientId, deviceName) {
+  async function issueGrant(q, user, clientId, deviceName) {
     const access = secret('lka_');
     const refresh = secret('lkr_');
     const now = Date.now();
     const id = newId();
-    db.prepare(`INSERT INTO app_grants (id, user_id, client_id, device_name, access_hash, access_expires, refresh_hash, refresh_expires, created_at, last_used)
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`).run(id, user.id, clientId, deviceName, sha256(access), now + ACCESS_TTL, sha256(refresh), now + REFRESH_TTL, now, now);
+    await q.run(`INSERT INTO app_grants (id, user_id, client_id, device_name, access_hash, access_expires, refresh_hash, refresh_expires, created_at, last_used)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`, id, user.id, clientId, deviceName, sha256(access), now + ACCESS_TTL, sha256(refresh), now + REFRESH_TTL, now, now);
     return { id, body: tokenBody(access, refresh) };
   }
   const tokenBody = (access, refresh) => ({ access_token: access, token_type: 'Bearer', expires_in: ACCESS_TTL / 1000, refresh_token: refresh, scope: 'account sync' });
   const oauthError = (status, error, description) => new HttpError(status, description, { error_code: error });
 
   // Called by the desktop app, not a browser page: no cookies are used, so no forgery check.
-  r.post('/api/oauth/token', { auth: false, csrf: false, form: true }, (req, res, body) => {
+  r.post('/api/oauth/token', { auth: false, csrf: false, form: true }, async (req, res, body) => {
     limit(limiter, `token:${req.ip}`, 60, 15 * 60_000);
     res.setHeader('Pragma', 'no-cache');
     const client = CLIENTS[body.client_id];
@@ -214,19 +212,21 @@ function register(r, ctx) {
 
     if (body.grant_type === 'authorization_code') {
       if (typeof body.code !== 'string' || !VERIFIER.test(String(body.code_verifier || ''))) throw oauthError(400, 'invalid_request', 'Missing code or verifier.');
-      const row = db.prepare('SELECT * FROM oauth_codes WHERE code_hash = ?').get(sha256(body.code));
+      const row = await db.get('SELECT * FROM oauth_codes WHERE code_hash = ?', sha256(body.code));
       if (!row || row.client_id !== body.client_id || row.redirect_uri !== body.redirect_uri) throw oauthError(400, 'invalid_grant', 'This sign-in code isn’t valid.');
       if (row.used_at) {
         // A code used twice means it leaked: sign out whatever it was swapped for.
-        if (row.grant_id) db.prepare('UPDATE app_grants SET revoked_at = ? WHERE id = ?').run(Date.now(), row.grant_id);
+        if (row.grant_id) await db.run('UPDATE app_grants SET revoked_at = ? WHERE id = ?', Date.now(), row.grant_id);
         throw oauthError(400, 'invalid_grant', 'This sign-in code was already used.');
       }
       if (row.expires_at < Date.now()) throw oauthError(400, 'invalid_grant', 'This sign-in code has expired. Please sign in again.');
       if (!crypto.timingSafeEqual(Buffer.from(s256(body.code_verifier)), Buffer.from(row.challenge))) throw oauthError(400, 'invalid_grant', 'The security check (PKCE) failed.');
-      const user = db.prepare('SELECT * FROM users WHERE id = ?').get(row.user_id);
-      const grant = tx(db, () => {
-        const g = issueGrant(user, row.client_id, row.device_name);
-        db.prepare('UPDATE oauth_codes SET used_at = ?, grant_id = ? WHERE code_hash = ?').run(Date.now(), g.id, row.code_hash);
+      const user = await db.get('SELECT * FROM users WHERE id = ?', row.user_id);
+      const grant = await db.tx(async (t) => {
+        const g = await issueGrant(t, user, row.client_id, row.device_name);
+        // Only one swap can win, even if two arrive at once.
+        const used = await t.run('UPDATE oauth_codes SET used_at = ?, grant_id = ? WHERE code_hash = ? AND used_at IS NULL', Date.now(), g.id, row.code_hash);
+        if (!used.changes) throw oauthError(400, 'invalid_grant', 'This sign-in code was already used.');
         return g;
       });
       mailer.send({ kind: 'new-sign-in', to: user.email, ...templates.newSignIn({
@@ -237,35 +237,35 @@ function register(r, ctx) {
 
     if (body.grant_type === 'refresh_token') {
       const h = sha256(String(body.refresh_token || ''));
-      const g = db.prepare('SELECT * FROM app_grants WHERE refresh_hash = ? AND client_id = ?').get(h, body.client_id);
+      const g = await db.get('SELECT * FROM app_grants WHERE refresh_hash = ? AND client_id = ?', h, body.client_id);
       if (!g) {
         // An old refresh token coming back means someone copied it: end that sign-in.
-        const stolen = db.prepare('SELECT id FROM app_grants WHERE prev_refresh_hash = ?').get(h);
-        if (stolen) db.prepare('UPDATE app_grants SET revoked_at = ? WHERE id = ?').run(Date.now(), stolen.id);
+        const stolen = await db.get('SELECT id FROM app_grants WHERE prev_refresh_hash = ?', h);
+        if (stolen) await db.run('UPDATE app_grants SET revoked_at = ? WHERE id = ?', Date.now(), stolen.id);
         throw oauthError(400, 'invalid_grant', 'Please sign in again.');
       }
       if (g.revoked_at || g.refresh_expires < Date.now()) throw oauthError(400, 'invalid_grant', 'Please sign in again.');
       const access = secret('lka_');
       const refresh = secret('lkr_');
       const now = Date.now();
-      db.prepare('UPDATE app_grants SET access_hash = ?, access_expires = ?, refresh_hash = ?, prev_refresh_hash = ?, refresh_expires = ?, last_used = ? WHERE id = ?')
-        .run(sha256(access), now + ACCESS_TTL, sha256(refresh), h, now + REFRESH_TTL, now, g.id);
+      const turned = await db.run('UPDATE app_grants SET access_hash = ?, access_expires = ?, refresh_hash = ?, prev_refresh_hash = ?, refresh_expires = ?, last_used = ? WHERE id = ? AND refresh_hash = ?', sha256(access), now + ACCESS_TTL, sha256(refresh), h, now + REFRESH_TTL, now, g.id, h);
+      if (!turned.changes) throw oauthError(400, 'invalid_grant', 'Please sign in again.');
       return tokenBody(access, refresh);
     }
     throw oauthError(400, 'unsupported_grant_type', 'Unsupported request.');
   });
 
   // Signing out from the app. Always answers OK (RFC 7009).
-  r.post('/api/oauth/revoke', { auth: false, csrf: false, form: true }, (req, res, body) => {
+  r.post('/api/oauth/revoke', { auth: false, csrf: false, form: true }, async (req, res, body) => {
     limit(limiter, `revoke:${req.ip}`, 60, 15 * 60_000);
     const h = sha256(String(body.token || ''));
-    db.prepare('UPDATE app_grants SET revoked_at = ? WHERE (access_hash = ? OR refresh_hash = ?) AND revoked_at IS NULL').run(Date.now(), h, h);
+    await db.run('UPDATE app_grants SET revoked_at = ? WHERE (access_hash = ? OR refresh_hash = ?) AND revoked_at IS NULL', Date.now(), h, h);
     return { ok: true };
   });
 
   // ---------- the API desktop apps use (Bearer tokens only) ----------
-  r.get('/api/v1/me', { bearer: true }, (req) => {
-    const u = db.prepare('SELECT * FROM users WHERE id = ?').get(req.user.id);
+  r.get('/api/v1/me', { bearer: true }, async (req) => {
+    const u = await db.get('SELECT * FROM users WHERE id = ?', req.user.id);
     return {
       user: { id: u.id, email: u.email, name: u.name, emailVerified: !!u.email_verified_at },
       // Plans arrive in Phase 3; until then every account has the free plan.
@@ -275,15 +275,14 @@ function register(r, ctx) {
   });
 
   // ---------- apps signed in, in the Account panel ----------
-  r.get('/api/me/apps', {}, (req) => ({
-    apps: db.prepare('SELECT id, client_id, device_name, created_at, last_used FROM app_grants WHERE user_id = ? AND revoked_at IS NULL AND refresh_expires > ? ORDER BY last_used DESC')
-      .all(req.user.id, Date.now())
+  r.get('/api/me/apps', {}, async (req) => ({
+    apps: (await db.all('SELECT id, client_id, device_name, created_at, last_used FROM app_grants WHERE user_id = ? AND revoked_at IS NULL AND refresh_expires > ? ORDER BY last_used DESC', req.user.id, Date.now()))
       .map((g) => ({ id: g.id, app: (CLIENTS[g.client_id] || {}).name || g.client_id, device: g.device_name, createdAt: g.created_at, lastUsed: g.last_used })),
   }));
 
-  r.post('/api/me/apps/:id/revoke', {}, (req) => {
+  r.post('/api/me/apps/:id/revoke', {}, async (req) => {
     if (!isId(req.params.id)) throw new HttpError(404, 'That app was not found.');
-    db.prepare('UPDATE app_grants SET revoked_at = ? WHERE id = ? AND user_id = ? AND revoked_at IS NULL').run(Date.now(), req.params.id, req.user.id);
+    await db.run('UPDATE app_grants SET revoked_at = ? WHERE id = ? AND user_id = ? AND revoked_at IS NULL', Date.now(), req.params.id, req.user.id);
     return { ok: true };
   });
 
@@ -295,11 +294,11 @@ function register(r, ctx) {
 }
 
 // Finds the account behind "Authorization: Bearer lka_…".
-function lookupAppToken(db, header) {
+async function lookupAppToken(db, header) {
   const m = /^Bearer (lka_[A-Za-z0-9_-]{43})$/.exec(String(header || ''));
   if (!m) return null;
-  const g = db.prepare(`SELECT g.id, g.access_expires, g.revoked_at, u.id AS user_id, u.email, u.name FROM app_grants g
-    JOIN users u ON u.id = g.user_id WHERE g.access_hash = ?`).get(sha256(m[1]));
+  const g = await db.get(`SELECT g.id, g.access_expires, g.revoked_at, u.id AS user_id, u.email, u.name FROM app_grants g
+    JOIN users u ON u.id = g.user_id WHERE g.access_hash = ?`, sha256(m[1]));
   if (!g || g.revoked_at || g.access_expires < Date.now()) return null;
   return { grantId: g.id, user: { id: g.user_id, email: g.email, name: g.name } };
 }

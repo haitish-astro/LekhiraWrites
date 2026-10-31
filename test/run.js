@@ -46,10 +46,10 @@ function rawRequest(path, headers) {
 }
 
 (async () => {
-  const { server } = await start({ port: Number(process.env.PORT), dbFile: ':memory:', mailer });
+  const { server, db } = await start({ port: Number(process.env.PORT), dbFile: ':memory:', mailer });
   const port = server.address().port;
   base = `http://localhost:${port}`;
-  console.log(`\nLekhira Writes tests on ${base}\n`);
+  console.log(`\nLekhira Writes tests on ${base} (${db.dialect})\n`);
 
   let alice, bob, aliceBook, chapter;
 
@@ -157,6 +157,14 @@ function rawRequest(path, headers) {
     assert.equal(r.json.conflict.version, chapter.version);
   });
 
+  await test('two saves of the same version at once: one wins, the other is refused (409)', async () => {
+    const edit = (word) => ({ doc: { v: 1, blocks: [...chapter.doc.blocks, { id: 'race1', t: 'p', r: [{ x: word }] }] }, baseVersion: chapter.version });
+    const both = await Promise.all(['left', 'right'].map((w) => call('PUT', `/api/chapters/${chapter.id}`, { cookie: alice, body: edit(w) })));
+    assert.deepEqual(both.map((r) => r.status).sort(), [200, 409], both.map((r) => r.text).join(' | '));
+    chapter = (await call('GET', `/api/chapters/${chapter.id}`, { cookie: alice })).json.chapter;
+    assert.equal(chapter.version, both.find((r) => r.status === 200).json.version);
+  });
+
   await test('words written today are counted', async () => {
     const more = { v: 1, blocks: [...chapter.doc.blocks, { id: 'more1', t: 'p', r: [{ x: 'one two three four five six seven eight nine ten eleven twelve thirteen fourteen fifteen sixteen seventeen eighteen nineteen twenty twenty-one twenty-two twenty-three twenty-four twenty-five twenty-six twenty-seven twenty-eight twenty-nine thirty thirty-one thirty-two thirty-three thirty-four thirty-five thirty-six thirty-seven thirty-eight thirty-nine forty forty-one forty-two forty-three forty-four forty-five' }] }] };
     const before = (await call('GET', '/api/stats', { cookie: alice })).json.today;
@@ -200,6 +208,26 @@ function rawRequest(path, headers) {
       assert.doesNotMatch(r.text, /require\(/);
     }
   });
+
+  await test('the health check answers for any host and shows nothing else', async () => {
+    assert.equal(await rawRequest('/healthz', { Host: 'internal.example' }), 200);
+    assert.equal(await rawRequest('/healthz?x', { Host: 'internal.example' }), 421);
+  });
+
+  await test('behind proxies, the visitor’s address is counted from the right, so it can’t be faked', () => {
+    const { clientIp } = require('../server/security.js');
+    const req = (xff) => ({ headers: { 'x-forwarded-for': xff }, socket: { remoteAddress: '10.0.0.9' } });
+    assert.equal(clientIp(req('6.6.6.6, 203.0.113.7'), 1), '203.0.113.7');
+    assert.equal(clientIp(req('6.6.6.6, 203.0.113.7, 172.68.1.1'), 2), '203.0.113.7');
+    assert.equal(clientIp(req('6.6.6.6'), 0), '10.0.0.9');
+  });
+
+  if (db.dialect === 'postgres') {
+    await test('Postgres tables are closed to Supabase’s public Data API (row-level security)', async () => {
+      const open = await db.all("SELECT relname FROM pg_class WHERE relkind = 'r' AND relnamespace = 'public'::regnamespace AND NOT relrowsecurity");
+      assert.deepEqual(open.map((r) => r.relname), []);
+    });
+  }
 
   await test('unknown Host headers are refused (DNS rebinding)', async () => {
     assert.equal(await rawRequest('/api/me', { Host: 'evil.example' }), 421);

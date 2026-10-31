@@ -1,4 +1,5 @@
-# Lekhira Writes — tests the server, then publishes the browser-only preview to GitHub Pages.
+# Lekhira Writes — tests the server (on SQLite and on a real Postgres), then publishes the
+# browser-only preview to GitHub Pages.
 # One-time setup: Settings → Pages → Build and deployment → Source: "GitHub Actions".
 # Actions are pinned to exact commits (a moved tag can't change what runs); Dependabot
 # proposes updates (.github/dependabot.yml).
@@ -21,6 +22,15 @@ concurrency:
 jobs:
   build:
     runs-on: ubuntu-latest
+    services:
+      # A throwaway Postgres for the tests, like the Supabase database the server uses live.
+      postgres:
+        image: postgres:17
+        env:
+          POSTGRES_PASSWORD: lekhira-ci
+        ports: ['5432:5432']
+        options: >-
+          --health-cmd pg_isready --health-interval 5s --health-timeout 5s --health-retries 10
     steps:
       - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
         with:
@@ -28,8 +38,15 @@ jobs:
       - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
         with:
           node-version: 22
-      - name: Test the server and its security rules
+          cache: npm
+      - name: Install the exact package versions
+        run: npm ci
+      - name: Test the server and its security rules (SQLite)
         run: npm test
+      - name: Test the same rules on Postgres
+        run: npm run test:pg
+        env:
+          TEST_DATABASE_URL: postgres://postgres:lekhira-ci@localhost:5432/postgres
       - name: Build the Pages preview
         run: npm run pages
         env:

@@ -1,5 +1,5 @@
 # Lekhira Writes — Dependabot proposes updates to the GitHub Actions the publish workflow uses
-# (they're pinned to exact commits). The server and pages have no npm packages to update.
+# (they're pinned to exact commits) and to the npm packages (pinned to exact versions).
 version: 2
 updates:
   - package-ecosystem: github-actions
@@ -8,3 +8,9 @@ updates:
       interval: weekly
     commit-message:
       prefix: "Actions"
+  - package-ecosystem: npm
+    directory: /
+    schedule:
+      interval: weekly
+    commit-message:
+      prefix: "Packages"

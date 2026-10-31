@@ -4,3 +4,6 @@ data/
 
 # GitHub Pages preview build (recreate with `npm run pages`)
 _site/
+
+# Packages (recreate with `npm ci`)
+node_modules/

@@ -1,4 +1,5 @@
-// Lekhira Writes: web server. Plain Node (http + built-in SQLite), no third-party packages.
+// Lekhira Writes: web server. Plain Node (http + built-in SQLite); the only package is `pg`,
+// loaded just when DATABASE_URL points at Postgres.
 //   PORT          port to listen on (default 4310)
 //   HOST          interface to bind (default 127.0.0.1: this computer only)
 //   PUBLIC_ORIGIN the Writes site, e.g. https://writes.lekhira.com (default http://writes.localhost:PORT)
@@ -6,8 +7,10 @@
 //                 For now one server answers both; they can be split later.
 //   EMAIL_PROVIDER outbox (default while developing) | resend (needs RESEND_API_KEY, EMAIL_FROM)
 //   NODE_ENV      "production" turns on Secure cookies and HSTS (needs HTTPS in front)
-//   DATA_DIR      where the database lives (default ./data)
-//   TRUST_PROXY   "1" when behind a reverse proxy that sets X-Forwarded-For
+//   DATA_DIR      where the SQLite database and the dev outbox live (default ./data)
+//   DATABASE_URL  a Postgres address (Supabase in production) instead of the SQLite file
+//   TRUST_PROXY   how many proxies set X-Forwarded-For in front of us (Render: 1; Cloudflare +
+//                 Render: 2). Unset means none: the connection's own address is used.
 'use strict';
 const http = require('node:http');
 const fs = require('node:fs');
@@ -27,7 +30,7 @@ const PRODUCTION = process.env.NODE_ENV === 'production';
 const PUBLIC_ORIGIN = (process.env.PUBLIC_ORIGIN || `http://writes.localhost:${PORT}`).replace(/\/$/, '');
 const API_ORIGIN = (process.env.API_ORIGIN || `http://api.localhost:${PORT}`).replace(/\/$/, '');
 const DATA_DIR = path.resolve(process.env.DATA_DIR || path.join(__dirname, '..', 'data'));
-const TRUST_PROXY = process.env.TRUST_PROXY === '1';
+const TRUST_PROXY = Math.max(0, Math.min(5, Number(process.env.TRUST_PROXY) || 0));
 const PUBLIC_DIR = path.join(__dirname, '..', 'public');
 const COOKIE = PRODUCTION ? '__Host-lw_session' : 'lw_session';
 const DEVICE_COOKIE = PRODUCTION ? '__Host-lw_device' : 'lw_device';
@@ -66,7 +69,7 @@ function createApp({ db, limiter, mailer }) {
   const acct = accounts.register(router, { db, limiter, cookies, mailer, origins });
   routes.register(router, { db, limiter, cookies, accounts: acct });
 
-  function sessionFrom(req) {
+  async function sessionFrom(req) {
     const token = req.cookies[COOKIE];
     return token ? auth.lookupSession(db, token) : null;
   }
@@ -89,7 +92,7 @@ function createApp({ db, limiter, mailer }) {
 
     if (r.opts.bearer) {
       // The desktop API: an app access token only, never the browser's cookie.
-      const found = accounts.lookupAppToken(db, req.headers.authorization);
+      const found = await accounts.lookupAppToken(db, req.headers.authorization);
       if (!found) {
         res.setHeader('WWW-Authenticate', 'Bearer realm="lekhira", error="invalid_token"');
         throw new HttpError(401, 'Please sign in again.', { error_code: 'invalid_token' });
@@ -97,7 +100,7 @@ function createApp({ db, limiter, mailer }) {
       req.user = found.user;
       req.grantId = found.grantId;
     } else {
-      req.session = sessionFrom(req);
+      req.session = await sessionFrom(req);
       req.user = req.session?.user;
       if (r.opts.auth !== false && !req.user) {
         cookies.clear(res);
@@ -170,19 +173,19 @@ ${mails.length ? mails.map((m) => `<h2>${esc((m.text.split('\n')[1] || '').repla
 
   function redirect(res, to) { res.writeHead(302, { Location: to, 'Cache-Control': 'no-store' }); res.end(); }
 
-  function handlePage(req, res, url) {
+  async function handlePage(req, res, url) {
     if (req.method !== 'GET' && req.method !== 'HEAD') throw new HttpError(405, 'Method not allowed.');
     const p = url.pathname;
     if (p === '/app' || p.startsWith('/app/')) {
-      if (!sessionFrom(req)) return redirect(res, '/signin');
+      if (!(await sessionFrom(req))) return redirect(res, '/signin');
       return sendFile(req, res, 'app.html');
     }
     if (p === '/signin' || p === '/signup') {
-      if (sessionFrom(req)) return redirect(res, safeNext(url.searchParams.get('next')) || '/app');
+      if (await sessionFrom(req)) return redirect(res, safeNext(url.searchParams.get('next')) || '/app');
     }
     if (p === '/oauth/authorize') {
       accounts.authorizeParams(url.searchParams);   // a bad request stops here, before any sign-in
-      if (!sessionFrom(req)) return redirect(res, `/signin?next=${encodeURIComponent(url.pathname + url.search)}`);
+      if (!(await sessionFrom(req))) return redirect(res, `/signin?next=${encodeURIComponent(url.pathname + url.search)}`);
       return sendFile(req, res, 'authorize.html');
     }
     if (p === '/dev/outbox' && !PRODUCTION && mailer.provider === 'outbox') return sendOutbox(res);
@@ -205,10 +208,17 @@ ${mails.length ? mails.map((m) => `<h2>${esc((m.text.split('\n')[1] || '').repla
     });
     let url;
     try {
+      // The host's health check (Render). It may use an internal address, so it comes before
+      // the Host check; it says only whether the database answers.
+      if (req.url === '/healthz' && req.method === 'GET') {
+        await db.get('SELECT 1 AS ok');
+        res.writeHead(200, { 'Content-Type': 'text/plain; charset=utf-8', 'Cache-Control': 'no-store' });
+        return res.end('ok');
+      }
       if (!HOSTS.has(String(req.headers.host || ''))) throw new HttpError(421, 'Unknown host.');
       url = new URL(req.url, PUBLIC_ORIGIN);
       if (url.pathname.startsWith('/api/')) await handleApi(req, res, url);
-      else handlePage(req, res, url);
+      else await handlePage(req, res, url);
     } catch (err) {
       if (res.headersSent) { res.destroy(); return; }
       const status = err instanceof HttpError ? err.status : 500;
@@ -229,8 +239,8 @@ function sendJson(res, status, payload) {
   res.end(json);
 }
 
-function start({ port = PORT, host = HOST, dbFile = path.join(DATA_DIR, 'lekhira-writes.db'), mailer } = {}) {
-  const db = db_.open(dbFile);
+async function start({ port = PORT, host = HOST, dbFile = path.join(DATA_DIR, 'lekhira-writes.db'), databaseUrl = process.env.DATABASE_URL, mailer } = {}) {
+  const db = await db_.open({ url: databaseUrl, file: dbFile });
   const limiter = new sec.RateLimiter();
   mailer = mailer || createMailer({
     provider: EMAIL_PROVIDER, from: process.env.EMAIL_FROM, apiKey: process.env.RESEND_API_KEY, outboxDir: path.join(DATA_DIR, 'outbox'),
@@ -241,12 +251,12 @@ function start({ port = PORT, host = HOST, dbFile = path.join(DATA_DIR, 'lekhira
   server.requestTimeout = 60_000;
   server.keepAliveTimeout = 5_000;
   server.maxHeadersCount = 60;
-  const sweep = setInterval(() => auth.sweepSessions(db), 3600_000);
+  const sweep = setInterval(() => auth.sweepSessions(db).catch((err) => console.error('Session sweep failed:', err.message)), 3600_000);
   sweep.unref();
   // Names like writes.localhost can resolve to IPv6 (::1) as well as 127.0.0.1, so on this
   // computer the server listens on both loopback addresses. Neither is reachable from outside.
   const v6 = host === '127.0.0.1' ? http.createServer(handler) : null;
-  server.on('close', () => { clearInterval(sweep); if (v6) v6.close(); try { db.close(); } catch { /* already closed */ } });
+  server.on('close', () => { clearInterval(sweep); if (v6) v6.close(); db.close().catch(() => { /* already closed */ }); });
   return new Promise((resolve, reject) => {
     server.once('error', reject);
     server.listen(port, host, () => {
@@ -260,7 +270,7 @@ function start({ port = PORT, host = HOST, dbFile = path.join(DATA_DIR, 'lekhira
 
 if (require.main === module) {
   start().then(() => {
-    console.log(`\n  Lekhira Writes is running at ${PUBLIC_ORIGIN}\n  Account API:  ${API_ORIGIN}\n  Email:        ${EMAIL_PROVIDER === 'outbox' ? `outbox (read them at ${PUBLIC_ORIGIN}/dev/outbox)` : EMAIL_PROVIDER}\n  Data: ${DATA_DIR}\n  Mode: ${PRODUCTION ? 'production' : 'development'}\n  Press Ctrl C to stop.\n`);
+    console.log(`\n  Lekhira Writes is running at ${PUBLIC_ORIGIN}\n  Account API:  ${API_ORIGIN}\n  Email:        ${EMAIL_PROVIDER === 'outbox' ? `outbox (read them at ${PUBLIC_ORIGIN}/dev/outbox)` : EMAIL_PROVIDER}\n  Data: ${process.env.DATABASE_URL ? 'Postgres (DATABASE_URL)' : DATA_DIR}\n  Mode: ${PRODUCTION ? 'production' : 'development'}\n  Press Ctrl C to stop.\n`);
     // Set by "Start Lekhira Writes.cmd", so the browser opens once the server is ready.
     if (process.env.OPEN_BROWSER === '1' && process.platform === 'win32') {
       require('node:child_process').spawn('cmd', ['/c', 'start', '', PUBLIC_ORIGIN], { detached: true, stdio: 'ignore' }).unref();

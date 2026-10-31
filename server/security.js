@@ -154,10 +154,14 @@ function sha256(s) { return crypto.createHash('sha256').update(s).digest('base64
 const ID_RE = /^[A-Za-z0-9_-]{8,32}$/;
 function isId(s) { return typeof s === 'string' && ID_RE.test(s); }
 
+// trustProxy is how many proxies we run behind (Render = 1; Cloudflare in front of Render = 2).
+// Each proxy adds the address it saw to the right of X-Forwarded-For, so we count from the
+// right: anything further left came from the visitor and could be made up.
 function clientIp(req, trustProxy) {
-  if (trustProxy) {
-    const fwd = String(req.headers['x-forwarded-for'] || '').split(',')[0].trim();
-    if (fwd) return fwd;
+  if (trustProxy > 0) {
+    const hops = String(req.headers['x-forwarded-for'] || '').split(',').map((s) => s.trim()).filter(Boolean);
+    const ip = hops[hops.length - trustProxy] || hops[0];
+    if (ip) return ip;
   }
   return req.socket.remoteAddress || 'unknown';
 }

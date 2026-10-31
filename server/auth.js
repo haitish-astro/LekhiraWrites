@@ -74,40 +74,39 @@ function checkNewPassword(v, { email, name } = {}) {
 }
 
 // ---------- sessions ----------
-function createSession(db, userId, agent) {
+async function createSession(db, userId, agent) {
   const token = crypto.randomBytes(32).toString('base64url');
   const now = Date.now();
-  db.prepare('INSERT INTO sessions (token_hash, user_id, created_at, expires_at, last_seen, agent) VALUES (?, ?, ?, ?, ?, ?)')
-    .run(sha256(token), userId, now, now + SESSION_MS, now, String(agent || '').slice(0, 200));
+  await db.run('INSERT INTO sessions (token_hash, user_id, created_at, expires_at, last_seen, agent) VALUES (?, ?, ?, ?, ?, ?)', sha256(token), userId, now, now + SESSION_MS, now, String(agent || '').slice(0, 200));
   // Keep at most 20 sessions per person; the oldest go first.
-  db.prepare(`DELETE FROM sessions WHERE user_id = ? AND token_hash NOT IN
-    (SELECT token_hash FROM sessions WHERE user_id = ? ORDER BY last_seen DESC LIMIT 20)`).run(userId, userId);
+  await db.run(`DELETE FROM sessions WHERE user_id = ? AND token_hash NOT IN
+    (SELECT token_hash FROM sessions WHERE user_id = ? ORDER BY last_seen DESC LIMIT 20)`, userId, userId);
   return token;
 }
 
-function lookupSession(db, token) {
+async function lookupSession(db, token) {
   if (!token || typeof token !== 'string' || token.length !== 43) return null;
   const hash = sha256(token);
-  const row = db.prepare(`SELECT s.token_hash, s.expires_at, s.last_seen, s.created_at, u.id, u.email, u.name, u.prefs, u.daily_goal, u.pw_changed_at, u.email_verified_at
-    FROM sessions s JOIN users u ON u.id = s.user_id WHERE s.token_hash = ?`).get(hash);
+  const row = await db.get(`SELECT s.token_hash, s.expires_at, s.last_seen, s.created_at, u.id, u.email, u.name, u.prefs, u.daily_goal, u.pw_changed_at, u.email_verified_at
+    FROM sessions s JOIN users u ON u.id = s.user_id WHERE s.token_hash = ?`, hash);
   if (!row) return null;
   const now = Date.now();
   if (row.expires_at < now || row.created_at < row.pw_changed_at) {
-    db.prepare('DELETE FROM sessions WHERE token_hash = ?').run(hash);
+    await db.run('DELETE FROM sessions WHERE token_hash = ?', hash);
     return null;
   }
   // Sliding expiry, written at most every 10 minutes.
   if (now - row.last_seen > TOUCH_MS) {
-    db.prepare('UPDATE sessions SET last_seen = ?, expires_at = ? WHERE token_hash = ?').run(now, now + SESSION_MS, hash);
+    await db.run('UPDATE sessions SET last_seen = ?, expires_at = ? WHERE token_hash = ?', now, now + SESSION_MS, hash);
   }
   return { tokenHash: hash, user: { id: row.id, email: row.email, name: row.name, prefs: row.prefs, dailyGoal: row.daily_goal, emailVerifiedAt: row.email_verified_at } };
 }
 
-function endSession(db, tokenHash) { db.prepare('DELETE FROM sessions WHERE token_hash = ?').run(tokenHash); }
-function endAllSessions(db, userId, exceptHash) {
-  db.prepare('DELETE FROM sessions WHERE user_id = ? AND token_hash != ?').run(userId, exceptHash || '');
+async function endSession(db, tokenHash) { await db.run('DELETE FROM sessions WHERE token_hash = ?', tokenHash); }
+async function endAllSessions(db, userId, exceptHash) {
+  await db.run('DELETE FROM sessions WHERE user_id = ? AND token_hash != ?', userId, exceptHash || '');
 }
-function sweepSessions(db) { db.prepare('DELETE FROM sessions WHERE expires_at < ?').run(Date.now()); }
+async function sweepSessions(db) { await db.run('DELETE FROM sessions WHERE expires_at < ?', Date.now()); }
 
 module.exports = {
   hashPassword, verifyPassword, burnTime, cleanEmail, cleanName, checkNewPassword,

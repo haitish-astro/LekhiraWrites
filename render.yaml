@@ -1,0 +1,41 @@
+# Lekhira Writes — the account + sync server on Render (a "Blueprint").
+# Render reads this when you choose New → Blueprint and pick this repository. Secrets marked
+# `sync: false` are typed into Render's dashboard once and never stored here.
+# Step by step: docs/GO-LIVE.md
+services:
+  - type: web
+    name: lekhira-api
+    runtime: node
+    plan: free                      # sleeps when idle; Starter keeps it awake
+    # Put the server next to the database: pick the Render region nearest your Supabase
+    # project's region (it can't be changed later without making a new service).
+    region: oregon
+    buildCommand: npm ci --omit=dev
+    startCommand: npm start
+    healthCheckPath: /healthz
+    autoDeployTrigger: checksPass   # deploy a new commit on main only after GitHub's tests pass
+    envVars:
+      - key: NODE_VERSION
+        value: "22"
+      - key: NODE_ENV
+        value: production
+      - key: HOST
+        value: 0.0.0.0
+      - key: TRUST_PROXY
+        value: "1"                  # Render's proxy; make it 2 if Cloudflare's proxy is added in front
+      - key: PUBLIC_ORIGIN
+        value: https://writes.lekhira.com
+      - key: API_ORIGIN
+        value: https://api.lekhira.com
+      - key: DATABASE_POOL
+        value: "5"
+      - key: DATABASE_URL           # Supabase → Connect → Session pooler (with the password)
+        sync: false
+      - key: DATABASE_CA            # Supabase → Database settings → SSL certificate (its text)
+        sync: false
+      - key: EMAIL_PROVIDER
+        value: resend
+      - key: EMAIL_FROM
+        value: Lekhira <no-reply@lekhira.com>
+      - key: RESEND_API_KEY         # Resend → API Keys (sending access only)
+        sync: false
